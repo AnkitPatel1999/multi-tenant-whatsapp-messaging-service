@@ -1,0 +1,63 @@
+export const PERMISSIONS = {
+  // User Management
+  CREATE_USER: 'create_user',
+  DELETE_USER: 'delete_user',
+  MANAGE_USERS: 'manage_users',
+  
+  // Group Management
+  MANAGE_GROUPS: 'manage_groups',
+  ASSIGN_USERS_TO_GROUPS: 'assign_users_to_groups',
+  
+  // WhatsApp Management
+  LINK_DEVICES: 'link_devices',
+  SEND_MESSAGES: 'send_messages',
+  MANAGE_DEVICES: 'manage_devices',
+  
+  // Data Access
+  VIEW_LOGS: 'view_logs',
+  VIEW_CONTACTS: 'view_contacts',
+  VIEW_GROUPS: 'view_groups',
+  MANAGE_CONTACTS: 'manage_contacts',
+  MANAGE_CHAT_GROUPS: 'manage_chat_groups',
+  
+  // System
+  SYSTEM_ADMIN: 'system_admin'
+} as const;
+
+export const ROLE_PERMISSIONS = {
+  ADMIN: [
+    PERMISSIONS.CREATE_USER,
+    PERMISSIONS.DELETE_USER,
+    PERMISSIONS.MANAGE_USERS,
+    PERMISSIONS.MANAGE_GROUPS,
+    PERMISSIONS.ASSIGN_USERS_TO_GROUPS,
+    PERMISSIONS.LINK_DEVICES,
+    PERMISSIONS.SEND_MESSAGES,
+    PERMISSIONS.MANAGE_DEVICES,
+    PERMISSIONS.VIEW_LOGS,
+    PERMISSIONS.VIEW_CONTACTS,
+    PERMISSIONS.VIEW_GROUPS,
+    PERMISSIONS.MANAGE_CONTACTS,
+    PERMISSIONS.MANAGE_CHAT_GROUPS,
+    PERMISSIONS.SYSTEM_ADMIN
+  ],
+  
+  EDITOR: [
+    PERMISSIONS.LINK_DEVICES,
+    PERMISSIONS.SEND_MESSAGES,
+    PERMISSIONS.VIEW_LOGS,
+    PERMISSIONS.VIEW_CONTACTS,
+    PERMISSIONS.VIEW_GROUPS,
+    PERMISSIONS.MANAGE_CONTACTS,
+    PERMISSIONS.MANAGE_CHAT_GROUPS
+  ],
+  
+  VIEWER: [
+    PERMISSIONS.VIEW_LOGS,
+    PERMISSIONS.VIEW_CONTACTS,
+    PERMISSIONS.VIEW_GROUPS
+  ]
+} as const;
+
+export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];
+export type Role = keyof typeof ROLE_PERMISSIONS;
