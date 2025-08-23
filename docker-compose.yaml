@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - MONGODB_URI=mongodb://mongo:27017/alchemy
+    depends_on:
+      - mongo
+    networks:
+      - alchemy-network
+      
+  mongo:
+    image: mongo:8.0.13
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - alchemy-network
+    # No authentication - simple setup
+    
+  mongo-express:
+    image: mongo-express
+    restart: always
+    ports:
+      - "8081:8081"
+    environment:
+      # Connect to mongo service without authentication
+      - ME_CONFIG_MONGODB_URL=mongodb://mongo:27017/
+      - ME_CONFIG_BASICAUTH_USERNAME=admin
+      - ME_CONFIG_BASICAUTH_PASSWORD=pass
+    depends_on:
+      - mongo
+    networks:
+      - alchemy-network
+
+volumes:
+  mongodb_data:
+
+networks:
+  alchemy-network:
+    driver: bridge
