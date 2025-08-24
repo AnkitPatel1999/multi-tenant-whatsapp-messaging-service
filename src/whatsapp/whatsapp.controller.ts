@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Body, Param, UseGuards, Request, Res, Req, HttpStatus, Delete, Query } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiBody, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { WhatsAppService } from './whatsapp.service';
 import { WhatsAppMessageService } from './message/whatsapp-message.service';
 import { BaileysService } from './baileys.service';
@@ -31,6 +31,44 @@ export class WhatsAppController {
 
   @Get('devices')
   @RequirePermissions(PERMISSIONS.VIEW_LOGS)
+  @ApiOperation({
+    summary: 'Get WhatsApp devices',
+    description: 'Retrieve all WhatsApp devices associated with the authenticated user and tenant'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Devices retrieved successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Devices retrieved successfully' },
+        data: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', example: '507f1f77bcf86cd799439011' },
+              deviceName: { type: 'string', example: 'My Business WhatsApp' },
+              phoneNumber: { type: 'string', example: '+1234567890' },
+              status: { type: 'string', enum: ['connected', 'disconnected', 'connecting'], example: 'connected' },
+              lastSeen: { type: 'string', example: '2025-01-20T12:00:00.000Z' },
+              createdAt: { type: 'string', example: '2025-01-20T10:00:00.000Z' },
+              isActive: { type: 'boolean', example: true }
+            }
+          }
+        },
+        error: { type: 'number', example: 0 }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Invalid or missing JWT token'
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - Insufficient permissions to view devices'
+  })
   async getDevices(@Req() request, @Res() response) {
     const responseData: {
       message: string;
@@ -59,6 +97,72 @@ export class WhatsAppController {
 
   @Post('devices')
   @RequirePermissions(PERMISSIONS.CREATE_USER)
+  @ApiOperation({
+    summary: 'Create WhatsApp device',
+    description: 'Create a new WhatsApp device. Device will need to be authenticated with QR code before use.'
+  })
+  @ApiBody({
+    type: CreateDeviceDto,
+    examples: {
+      businessDevice: {
+        summary: 'Business device creation',
+        value: {
+          deviceName: 'Main Business WhatsApp'
+        }
+      },
+      personalDevice: {
+        summary: 'Personal device creation',
+        value: {
+          deviceName: 'Personal WhatsApp Device'
+        }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Device created successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Device has been created successfully' },
+        data: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', example: '507f1f77bcf86cd799439011' },
+            deviceName: { type: 'string', example: 'Main Business WhatsApp' },
+            status: { type: 'string', example: 'disconnected' },
+            qrCodeRequired: { type: 'boolean', example: true },
+            createdAt: { type: 'string', example: '2025-01-20T12:00:00.000Z' }
+          }
+        },
+        error: { type: 'number', example: 0 }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad Request - Invalid device data',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Error: Device not created!' },
+        data: { type: 'object', example: {} },
+        error: { type: 'number', example: 1 },
+        confidentialErrorMessage: { 
+          type: 'string', 
+          example: 'Device name must be at least 1 character' 
+        }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Invalid or missing JWT token'
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - Insufficient permissions to create devices'
+  })
   async createDevice(@Req() request, @Res() response, @Body() createDeviceDto: CreateDeviceDto) {
     const responseData: {
       message: string;
@@ -120,6 +224,78 @@ export class WhatsAppController {
 
   @Post('send')
   @RequirePermissions(PERMISSIONS.VIEW_LOGS)
+  @ApiOperation({
+    summary: 'Send WhatsApp message',
+    description: 'Send a WhatsApp message to a contact or group using a connected device'
+  })
+  @ApiBody({
+    type: SendMessageDto,
+    examples: {
+      textMessage: {
+        summary: 'Send text message to contact',
+        value: {
+          deviceId: '507f1f77bcf86cd799439011',
+          to: '1234567890@c.us',
+          message: 'Hello! This is a test message from our API.',
+          type: 'text'
+        }
+      },
+      groupMessage: {
+        summary: 'Send message to group',
+        value: {
+          deviceId: '507f1f77bcf86cd799439011',
+          to: '120363043211234567@g.us',
+          message: 'Hello everyone in the group!',
+          type: 'text'
+        }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Message sent successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Message sent successfully' },
+        data: {
+          type: 'object',
+          properties: {
+            messageId: { type: 'string', example: 'ABC123DEF456' },
+            timestamp: { type: 'string', example: '2025-01-20T12:00:00.000Z' },
+            status: { type: 'string', example: 'sent' },
+            to: { type: 'string', example: '1234567890@c.us' },
+            deviceId: { type: 'string', example: '507f1f77bcf86cd799439011' }
+          }
+        },
+        error: { type: 'number', example: 0 }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad Request - Device not connected or invalid recipient',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Error: Failed to send message!' },
+        data: { type: 'object', example: {} },
+        error: { type: 'number', example: 1 },
+        confidentialErrorMessage: { 
+          type: 'string', 
+          example: 'Device is not connected or recipient format is invalid' 
+        }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Invalid or missing JWT token'
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - Insufficient permissions to send messages'
+  })
   async sendMessage(
     @Req() request,
     @Res() response,

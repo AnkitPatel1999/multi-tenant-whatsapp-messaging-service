@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Body, UseGuards, Request, Query, Res, Req, HttpStatus } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiBody, ApiQuery } from '@nestjs/swagger';
 import { ContactService } from './contact.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { TenantScope } from '../auth/decorators/tenant-scope.decorator';
@@ -14,8 +14,104 @@ import { CreateContactDto } from '../dto/create-contact.dto';
 export class ContactController {
   constructor(private contactService: ContactService) {}
 
-
   @Post()
+  @ApiOperation({
+    summary: 'Create new contact',
+    description: 'Create a new contact in the system for WhatsApp messaging and contact management'
+  })
+  @ApiBody({
+    type: CreateContactDto,
+    description: 'Contact information to create',
+    examples: {
+      businessContact: {
+        summary: 'Business contact example',
+        value: {
+          contactName: 'John Smith - ABC Corp',
+          phoneNumber: '+1234567890',
+          email: 'john.smith@abccorp.com',
+          notes: 'Key decision maker for project X'
+        }
+      },
+      personalContact: {
+        summary: 'Personal contact example',
+        value: {
+          contactName: 'Sarah Johnson',
+          phoneNumber: '+1987654321',
+          email: 'sarah.j@gmail.com',
+          notes: 'Family friend'
+        }
+      },
+      minimalContact: {
+        summary: 'Minimal contact (only required fields)',
+        value: {
+          contactName: 'Mike Wilson',
+          phoneNumber: '+1555123456'
+        }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Contact created successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Contact has been created successfully' },
+        data: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', example: '507f1f77bcf86cd799439011' },
+            contactName: { type: 'string', example: 'John Smith - ABC Corp' },
+            phoneNumber: { type: 'string', example: '+1234567890' },
+            email: { type: 'string', example: 'john.smith@abccorp.com' },
+            notes: { type: 'string', example: 'Key decision maker for project X' },
+            tenantId: { type: 'string', example: '507f1f77bcf86cd799439012' },
+            userId: { type: 'string', example: '507f1f77bcf86cd799439013' },
+            isActive: { type: 'boolean', example: true },
+            createdAt: { type: 'string', example: '2025-01-20T12:00:00.000Z' },
+            updatedAt: { type: 'string', example: '2025-01-20T12:00:00.000Z' }
+          }
+        },
+        error: { type: 'number', example: 0 }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad Request - Invalid contact data or validation errors',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Error: Contact not created!' },
+        data: { type: 'object', example: {} },
+        error: { type: 'number', example: 1 },
+        confidentialErrorMessage: { 
+          type: 'string', 
+          example: 'Phone number must be at least 8 digits' 
+        }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Invalid or missing JWT token'
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Conflict - Contact with this phone number already exists',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Error: Contact not created!' },
+        data: { type: 'object', example: {} },
+        error: { type: 'number', example: 1 },
+        confidentialErrorMessage: { 
+          type: 'string', 
+          example: 'Contact with phone number +1234567890 already exists' 
+        }
+      }
+    }
+  })
   async createContact(@Req() request, @Res() response, @Body() createContactDto: CreateContactDto) {
     console.log('createContact api called');
     const responseData: {
@@ -67,6 +163,61 @@ export class ContactController {
 
   
   @Get()
+  @ApiOperation({
+    summary: 'Get all contacts',
+    description: 'Retrieve all contacts for the authenticated user within their tenant, with optional filtering by userId'
+  })
+  @ApiQuery({
+    name: 'userId',
+    description: 'Optional user ID to filter contacts by specific user',
+    type: 'string',
+    required: false,
+    example: '507f1f77bcf86cd799439013'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Contacts retrieved successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Contacts retrieved successfully' },
+        data: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', example: '507f1f77bcf86cd799439011' },
+              contactName: { type: 'string', example: 'John Smith - ABC Corp' },
+              phoneNumber: { type: 'string', example: '+1234567890' },
+              email: { type: 'string', example: 'john.smith@abccorp.com' },
+              notes: { type: 'string', example: 'Key decision maker for project X' },
+              isActive: { type: 'boolean', example: true },
+              createdAt: { type: 'string', example: '2025-01-20T12:00:00.000Z' },
+              updatedAt: { type: 'string', example: '2025-01-20T12:00:00.000Z' }
+            }
+          }
+        },
+        error: { type: 'number', example: 0 }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Invalid or missing JWT token'
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad Request - Error retrieving contacts',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Error: Failed to retrieve contacts!' },
+        data: { type: 'object', example: {} },
+        error: { type: 'number', example: 1 },
+        confidentialErrorMessage: { type: 'string', example: 'Database connection error' }
+      }
+    }
+  })
   async getContacts(@Req() request, @Res() response, @Query('userId') userId?: string) {
     const responseData: {
       message: string;

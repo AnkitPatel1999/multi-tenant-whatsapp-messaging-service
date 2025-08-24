@@ -1,5 +1,5 @@
 import { Controller, Get, Query, UseGuards, Request, Res, Req, HttpStatus } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { MessageService } from './message.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { TenantScope } from '../auth/decorators/tenant-scope.decorator';
@@ -14,6 +14,76 @@ export class MessageController {
   constructor(private messageService: MessageService) {}
 
   @Get()
+  @ApiOperation({
+    summary: 'Get messages',
+    description: 'Retrieve messages with optional filtering by user, group, and pagination'
+  })
+  @ApiQuery({
+    name: 'userId',
+    description: 'Filter messages by specific user ID',
+    type: 'string',
+    required: false,
+    example: '507f1f77bcf86cd799439014'
+  })
+  @ApiQuery({
+    name: 'groupId',
+    description: 'Filter messages by specific group ID',
+    type: 'string',
+    required: false,
+    example: '507f1f77bcf86cd799439015'
+  })
+  @ApiQuery({
+    name: 'limit',
+    description: 'Maximum number of messages to return',
+    type: 'number',
+    required: false,
+    example: 50
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Messages retrieved successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Messages retrieved successfully' },
+        data: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', example: 'MSG123' },
+              content: { type: 'string', example: 'Hello, how are you?' },
+              from: { type: 'string', example: '1234567890@c.us' },
+              to: { type: 'string', example: '0987654321@c.us' },
+              timestamp: { type: 'string', example: '2025-01-20T12:00:00.000Z' },
+              type: { type: 'string', example: 'text' },
+              direction: { type: 'string', enum: ['incoming', 'outgoing'], example: 'outgoing' },
+              userId: { type: 'string', example: '507f1f77bcf86cd799439014' },
+              groupId: { type: 'string', example: '507f1f77bcf86cd799439015' }
+            }
+          }
+        },
+        error: { type: 'number', example: 0 }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Invalid or missing JWT token'
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad Request - Invalid query parameters',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Error: Failed to retrieve messages!' },
+        data: { type: 'object', example: {} },
+        error: { type: 'number', example: 1 },
+        confidentialErrorMessage: { type: 'string', example: 'Invalid limit parameter' }
+      }
+    }
+  })
   async getMessages(
     @Req() request,
     @Res() response,
