@@ -196,6 +196,69 @@ export class WhatsAppController {
 
   @Post('devices/:deviceId/qr')
   @RequirePermissions(PERMISSIONS.VIEW_LOGS)
+  @ApiOperation({
+    summary: 'Generate QR code',
+    description: 'Generate QR code for WhatsApp authentication. Scan with WhatsApp mobile app to connect device.'
+  })
+  @ApiParam({
+    name: 'deviceId',
+    description: 'Device ID to generate QR code for',
+    type: 'string',
+    example: '507f1f77bcf86cd799439011'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'QR code generated successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'QR code generated successfully' },
+        data: {
+          type: 'object',
+          properties: {
+            qrCode: { type: 'string', description: 'Base64 encoded QR code image', example: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...' },
+            qrText: { type: 'string', description: 'QR code text for manual entry', example: '1@ABC123DEF...' },
+            expiresIn: { type: 'number', description: 'QR code expiration time in seconds', example: 300 }
+          }
+        },
+        error: { type: 'number', example: 0 }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Device already connected or invalid device state',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Error: Failed to generate QR code!' },
+        data: { type: 'object', example: {} },
+        error: { type: 'number', example: 1 },
+        confidentialErrorMessage: { type: 'string', example: 'Device is already connected' }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Device not found',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Error: Failed to generate QR code!' },
+        data: { type: 'object', example: {} },
+        error: { type: 'number', example: 1 },
+        confidentialErrorMessage: { type: 'string', example: 'Device not found' }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Invalid or missing JWT token'
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - Insufficient permissions'
+  })
   async generateQRCode(@Req() request, @Res() response, @Param('deviceId') deviceId: string) {
     const responseData: {
       message: string;
@@ -333,6 +396,69 @@ export class WhatsAppController {
 
   @Post('devices/:deviceId/disconnect')
   @RequirePermissions(PERMISSIONS.VIEW_LOGS)
+  @ApiOperation({
+    summary: 'Disconnect WhatsApp device',
+    description: 'Disconnect a WhatsApp device and end the session'
+  })
+  @ApiParam({
+    name: 'deviceId',
+    description: 'Device ID to disconnect',
+    type: 'string',
+    example: '507f1f77bcf86cd799439011'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Device disconnected successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Device disconnected successfully' },
+        data: {
+          type: 'object',
+          properties: {
+            deviceId: { type: 'string', example: '507f1f77bcf86cd799439011' },
+            status: { type: 'string', example: 'disconnected' },
+            disconnectedAt: { type: 'string', example: '2025-01-20T12:00:00.000Z' }
+          }
+        },
+        error: { type: 'number', example: 0 }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Device not found',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Error: Failed to disconnect device!' },
+        data: { type: 'object', example: {} },
+        error: { type: 'number', example: 1 },
+        confidentialErrorMessage: { type: 'string', example: 'Device not found' }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Device already disconnected',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Error: Failed to disconnect device!' },
+        data: { type: 'object', example: {} },
+        error: { type: 'number', example: 1 },
+        confidentialErrorMessage: { type: 'string', example: 'Device is already disconnected' }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Invalid or missing JWT token'
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - Insufficient permissions'
+  })
   async disconnectDevice(@Req() request, @Res() response, @Param('deviceId') deviceId: string) {
     const responseData: {
       message: string;
@@ -361,6 +487,55 @@ export class WhatsAppController {
 
   @Delete('devices/:deviceId')
   @RequirePermissions(PERMISSIONS.DELETE_USER)
+  @ApiOperation({
+    summary: 'Delete WhatsApp device',
+    description: 'Permanently delete a WhatsApp device and all associated data'
+  })
+  @ApiParam({
+    name: 'deviceId',
+    description: 'Device ID to delete',
+    type: 'string',
+    example: '507f1f77bcf86cd799439011'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Device deleted successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Device deleted successfully' },
+        data: {
+          type: 'object',
+          properties: {
+            deletedDeviceId: { type: 'string', example: '507f1f77bcf86cd799439011' },
+            deletedAt: { type: 'string', example: '2025-01-20T12:00:00.000Z' }
+          }
+        },
+        error: { type: 'number', example: 0 }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Device not found',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Error: Failed to delete device!' },
+        data: { type: 'object', example: {} },
+        error: { type: 'number', example: 1 },
+        confidentialErrorMessage: { type: 'string', example: 'Device not found' }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Invalid or missing JWT token'
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - Insufficient permissions to delete devices'
+  })
   async deleteDevice(@Req() request, @Res() response, @Param('deviceId') deviceId: string) {
     const responseData: {
       message: string;
@@ -389,6 +564,61 @@ export class WhatsAppController {
 
   @Get('devices/:deviceId')
   @RequirePermissions(PERMISSIONS.VIEW_LOGS)
+  @ApiOperation({
+    summary: 'Get WhatsApp device by ID',
+    description: 'Retrieve detailed information about a specific WhatsApp device'
+  })
+  @ApiParam({
+    name: 'deviceId',
+    description: 'Unique device identifier',
+    type: 'string',
+    example: '507f1f77bcf86cd799439011'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Device retrieved successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Device retrieved successfully' },
+        data: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', example: '507f1f77bcf86cd799439011' },
+            deviceName: { type: 'string', example: 'My Business WhatsApp' },
+            phoneNumber: { type: 'string', example: '+1234567890' },
+            status: { type: 'string', enum: ['connected', 'disconnected', 'connecting'], example: 'connected' },
+            lastSeen: { type: 'string', example: '2025-01-20T12:00:00.000Z' },
+            createdAt: { type: 'string', example: '2025-01-20T10:00:00.000Z' },
+            isActive: { type: 'boolean', example: true },
+            tenantId: { type: 'string', example: '507f1f77bcf86cd799439012' },
+            userId: { type: 'string', example: '507f1f77bcf86cd799439013' }
+          }
+        },
+        error: { type: 'number', example: 0 }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Device not found',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Device not found' },
+        data: { type: 'object', example: {} },
+        error: { type: 'number', example: 1 }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Invalid or missing JWT token'
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - Insufficient permissions to view device details'
+  })
   async getDeviceById(@Req() request, @Res() response, @Param('deviceId') deviceId: string) {
     const responseData: {
       message: string;

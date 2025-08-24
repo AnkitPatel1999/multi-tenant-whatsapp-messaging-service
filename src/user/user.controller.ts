@@ -318,6 +318,77 @@ export class UserController {
 
   @Put(':userId/group')
   @RequirePermissions(PERMISSIONS.ASSIGN_USERS_TO_GROUPS)
+  @ApiOperation({
+    summary: 'Assign user to group',
+    description: 'Assign a user to a specific group within the tenant'
+  })
+  @ApiParam({
+    name: 'userId',
+    description: 'User ID to assign to group',
+    type: 'string',
+    example: '507f1f77bcf86cd799439011'
+  })
+  @ApiBody({
+    description: 'Group assignment data',
+    schema: {
+      type: 'object',
+      properties: {
+        groupId: { type: 'string', example: '507f1f77bcf86cd799439013' }
+      },
+      required: ['groupId']
+    },
+    examples: {
+      adminGroup: {
+        summary: 'Assign to admin group',
+        value: { groupId: '507f1f77bcf86cd799439013' }
+      },
+      userGroup: {
+        summary: 'Assign to user group',
+        value: { groupId: '507f1f77bcf86cd799439014' }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'User assigned to group successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'User assigned to group successfully' },
+        data: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', example: '507f1f77bcf86cd799439011' },
+            username: { type: 'string', example: 'john.smith' },
+            groupId: { type: 'string', example: '507f1f77bcf86cd799439013' },
+            updatedAt: { type: 'string', example: '2025-01-20T12:00:00.000Z' }
+          }
+        },
+        error: { type: 'number', example: 0 }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'User or group not found',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Error: Failed to assign user to group!' },
+        data: { type: 'object', example: {} },
+        error: { type: 'number', example: 1 },
+        confidentialErrorMessage: { type: 'string', example: 'User or group not found' }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Invalid or missing JWT token'
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - Insufficient permissions to assign users'
+  })
   async assignUserToGroup(
     @Req() request,
     @Res() response,
@@ -351,6 +422,64 @@ export class UserController {
 
   @Delete(':userId')
   @RequirePermissions(PERMISSIONS.DELETE_USER)
+  @ApiOperation({
+    summary: 'Delete user',
+    description: 'Permanently delete a user from the tenant'
+  })
+  @ApiParam({
+    name: 'userId',
+    description: 'ID of user to delete',
+    type: 'string',
+    example: '507f1f77bcf86cd799439011'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'User deleted successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'User deleted successfully' },
+        data: {
+          type: 'object',
+          properties: {
+            deletedUserId: { type: 'string', example: '507f1f77bcf86cd799439011' },
+            deletedAt: { type: 'string', example: '2025-01-20T12:00:00.000Z' }
+          }
+        },
+        error: { type: 'number', example: 0 }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'User not found',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Error: Failed to delete user!' },
+        data: { type: 'object', example: {} },
+        error: { type: 'number', example: 1 },
+        confidentialErrorMessage: { type: 'string', example: 'User not found' }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Cannot delete yourself or insufficient permissions',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Error: Failed to delete user!' },
+        data: { type: 'object', example: {} },
+        error: { type: 'number', example: 1 },
+        confidentialErrorMessage: { type: 'string', example: 'Cannot delete your own account' }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Invalid or missing JWT token'
+  })
   async deleteUser(@Req() request, @Res() response, @Param('userId') userId: string) {
     const responseData: {
       message: string;
