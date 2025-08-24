@@ -15,6 +15,9 @@ import { WhatsAppDeviceSchema } from './schema/whatsapp-device.schema';
 import { MessageLogSchema } from './schema/message-log.schema';
 import { ContactSchema } from './schema/contact.schema';
 import { ChatGroupSchema } from './schema/chat-group.schema';
+import { WhatsAppSessionSchema } from './schema/whatsapp-session.schema';
+import { WhatsAppContactSchema } from './schema/whatsapp-contact.schema';
+import { WhatsAppGroupSchema } from './schema/whatsapp-group.schema';
 
 // Modules
 import { AuthModule } from './auth/auth.module';
@@ -54,6 +57,9 @@ import { AppThrottlerModule } from './common/throttler/throttler.module';
       { name: 'User', schema: UserSchema },
       { name: 'UserGroup', schema: UserGroupSchema },
       { name: 'WhatsAppDevice', schema: WhatsAppDeviceSchema },
+      { name: 'WhatsAppSession', schema: WhatsAppSessionSchema },
+      { name: 'WhatsAppContact', schema: WhatsAppContactSchema },
+      { name: 'WhatsAppGroup', schema: WhatsAppGroupSchema },
       { name: 'MessageLog', schema: MessageLogSchema },
       { name: 'Contact', schema: ContactSchema },
       { name: 'ChatGroup', schema: ChatGroupSchema },

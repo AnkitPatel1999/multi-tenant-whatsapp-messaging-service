@@ -40,6 +40,12 @@ export class WhatsAppDevice {
 
   @Prop()
   qrExpiry?: Date;
+
+  @Prop()
+  lastContactSync?: Date;
+
+  @Prop()
+  lastGroupSync?: Date;
 }
 
 export const WhatsAppDeviceSchema = SchemaFactory.createForClass(WhatsAppDevice);

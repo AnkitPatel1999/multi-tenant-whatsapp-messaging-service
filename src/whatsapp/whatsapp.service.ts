@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { WhatsAppDevice, WhatsAppDeviceDocument } from '../schema/whatsapp-device.schema';
 import { BaileysService } from './baileys.service';
+import { WhatsAppSyncService } from './sync/whatsapp-sync.service';
 import { v4 as uuidv4 } from 'uuid';
 import { 
   CreateDeviceData, 
@@ -19,6 +20,7 @@ export class WhatsAppService {
   constructor(
     @InjectModel(WhatsAppDevice.name) private deviceModel: Model<WhatsAppDeviceDocument>,
     private baileysService: BaileysService,
+    private whatsappSync: WhatsAppSyncService,
   ) {}
 
   async createDevice(createDeviceData: CreateDeviceData): Promise<WhatsAppDeviceDocument> {
@@ -305,5 +307,87 @@ export class WhatsAppService {
       deviceStatuses,
       timestamp: new Date()
     };
+  }
+
+  async getDeviceContacts(deviceId: string, userId: string, tenantId: string, search?: string): Promise<any> {
+    // Verify device ownership
+    const device = await this.deviceModel.findOne({ deviceId, userId, tenantId }).exec();
+    if (!device) {
+      throw new NotFoundException('Device not found');
+    }
+
+    if (search) {
+      return await this.whatsappSync.searchContacts(deviceId, userId, tenantId, search);
+    } else {
+      return await this.whatsappSync.getContacts(deviceId, userId, tenantId);
+    }
+  }
+
+  async getDeviceGroups(deviceId: string, userId: string, tenantId: string, search?: string): Promise<any> {
+    // Verify device ownership
+    const device = await this.deviceModel.findOne({ deviceId, userId, tenantId }).exec();
+    if (!device) {
+      throw new NotFoundException('Device not found');
+    }
+
+    if (search) {
+      return await this.whatsappSync.searchGroups(deviceId, userId, tenantId, search);
+    } else {
+      return await this.whatsappSync.getGroups(deviceId, userId, tenantId);
+    }
+  }
+
+  async syncDeviceContacts(deviceId: string, userId: string, tenantId: string): Promise<any> {
+    // Verify device ownership
+    const device = await this.deviceModel.findOne({ deviceId, userId, tenantId }).exec();
+    if (!device) {
+      throw new NotFoundException('Device not found');
+    }
+
+    // Check if device is connected
+    const connectionStatus = await this.baileysService.getConnectionStatus(deviceId);
+    if (!connectionStatus.isConnected) {
+      throw new NotFoundException('Device not connected to WhatsApp');
+    }
+
+    // Get the connection and sync contacts
+    const connection = this.baileysService.getConnection(deviceId);
+    if (!connection) {
+      throw new NotFoundException('WhatsApp connection not found');
+    }
+
+    return await this.whatsappSync.syncContacts(deviceId, connection);
+  }
+
+  async syncDeviceGroups(deviceId: string, userId: string, tenantId: string): Promise<any> {
+    // Verify device ownership
+    const device = await this.deviceModel.findOne({ deviceId, userId, tenantId }).exec();
+    if (!device) {
+      throw new NotFoundException('Device not found');
+    }
+
+    // Check if device is connected
+    const connectionStatus = await this.baileysService.getConnectionStatus(deviceId);
+    if (!connectionStatus.isConnected) {
+      throw new NotFoundException('Device not connected to WhatsApp');
+    }
+
+    // Get the connection and sync groups
+    const connection = this.baileysService.getConnection(deviceId);
+    if (!connection) {
+      throw new NotFoundException('WhatsApp connection not found');
+    }
+
+    return await this.whatsappSync.syncGroups(deviceId, connection);
+  }
+
+  async getDeviceSyncStats(deviceId: string, userId: string, tenantId: string): Promise<any> {
+    // Verify device ownership
+    const device = await this.deviceModel.findOne({ deviceId, userId, tenantId }).exec();
+    if (!device) {
+      throw new NotFoundException('Device not found');
+    }
+
+    return await this.whatsappSync.getSyncStats(deviceId);
   }
 }

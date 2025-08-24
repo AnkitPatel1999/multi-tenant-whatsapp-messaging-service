@@ -8,6 +8,8 @@ import { Model } from 'mongoose';
 import * as fs from 'fs';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import { DatabaseAuthStateService } from './auth-state/database-auth-state.service';
+import { WhatsAppSyncService } from './sync/whatsapp-sync.service';
 import * as qrcode from 'qrcode-terminal';
 
 // Create a custom logger that implements ILogger interface
@@ -43,6 +45,8 @@ export class BaileysService {
 
   constructor(
     @InjectModel(WhatsAppDevice.name) private deviceModel: Model<WhatsAppDeviceDocument>,
+    private databaseAuthState: DatabaseAuthStateService,
+    private whatsappSync: WhatsAppSyncService,
   ) {}
 
   async createConnection(deviceId: string, userId: string, tenantId: string): Promise<{ success: boolean; deviceId: string }> {
@@ -53,11 +57,22 @@ export class BaileysService {
     }
 
     try { 
-      // Create or load auth state
-      const authState = await this.getOrCreateAuthState(deviceId);
+      // Use hybrid approach: file-based for new devices, database for existing
+      let authState;
+      
+      // Check if we have existing credentials in database
+      const hasExistingCreds = await this.databaseAuthState.hasExistingCredentials(deviceId);
+      
+      if (hasExistingCreds) {
+        // Use database auth state for existing devices
+        authState = await this.databaseAuthState.createDatabaseAuthState(deviceId, userId, tenantId);
+      } else {
+        // Use file-based auth state for new devices (more reliable for initial setup)
+        authState = await this.getOrCreateAuthState(deviceId);
+      }
 
       // Log auth state status for debugging
-      if (authState.state && authState.state.creds && authState.state.creds.me) {
+      if (authState.state && authState.state.creds && Object.keys(authState.state.creds).length > 0) {
         this.logger.log(`Device ${deviceId} has existing credentials`);
       } else {
         this.logger.log(`Device ${deviceId} needs QR authentication (new device)`);
@@ -75,14 +90,13 @@ export class BaileysService {
       this.logger.log(`Using WA v${version.join('.')}, isLatest: ${isLatest}`);
 
       // Create connection with properly structured auth
-      const sock = makeWASocket({
+      const socketConfig: any = {
         version,
         logger: this.baileysLogger,
         browser: ['WhatsApp API', 'Chrome', '1.0.0'],
         connectTimeoutMs: 60_000,
         keepAliveIntervalMs: 30_000,
         qrTimeout: 60_000, // 60 seconds for QR timeout
-        auth: authState.state, // Use the state property which contains creds and keys
         generateHighQualityLinkPreview: true,
         defaultQueryTimeoutMs: 60_000, // Increase query timeout
         retryRequestDelayMs: 250, // Reduce retry delay
@@ -102,7 +116,12 @@ export class BaileysService {
           // If no timestamp available, sync by default but limit to reduce load
           return true;
         },
-      });
+      };
+
+      // Always provide auth state, even if empty (Baileys requires it)
+      socketConfig.auth = authState.state;
+
+      const sock = makeWASocket(socketConfig);
 
       // Handle connection events
       sock.ev.on('connection.update', async (update) => {
@@ -135,10 +154,23 @@ export class BaileysService {
           // Save auth state after successful connection
           await authState.saveCreds();
           
+          // Migrate to database storage if using file-based auth
+          if (!hasExistingCreds && authState.state && authState.state.creds && Object.keys(authState.state.creds).length > 0) {
+            try {
+              await this.databaseAuthState.migrateFromFileAuth(deviceId, userId, tenantId, authState.state);
+              this.logger.log(`Migrated auth state to database for device ${deviceId}`);
+            } catch (error) {
+              this.logger.warn(`Failed to migrate auth state to database: ${error.message}`);
+            }
+          }
+          
           // Display success message
           console.log('\n✅ WhatsApp Device Connected Successfully!');
           console.log(`📱 Device ID: ${deviceId}`);
           console.log('🚀 You can now send messages via API\n');
+          
+          // Trigger initial sync of contacts and groups
+          this.triggerInitialSync(deviceId, sock);
         } else if (connection === 'connecting') {
           this.logger.log(`Connecting device ${deviceId}...`);
         }
@@ -146,7 +178,7 @@ export class BaileysService {
 
       // Handle credential updates
       sock.ev.on('creds.update', async () => {
-        await authState.saveCreds(); // Use the built-in save function
+        await authState.saveCreds(); // Save credentials
       });
 
       // Handle messages
@@ -166,43 +198,7 @@ export class BaileysService {
     }
   }
 
-  private async getOrCreateAuthState(deviceId: string): Promise<any> {
-    try {
-      // Ensure sessions directory exists
-      const sessionsDir = './sessions';
-      const deviceSessionDir = path.join(sessionsDir, deviceId);
-      
-      if (!fs.existsSync(sessionsDir)) {
-        fs.mkdirSync(sessionsDir, { recursive: true });
-      }
 
-      if (!fs.existsSync(deviceSessionDir)) {
-        fs.mkdirSync(deviceSessionDir, { recursive: true });
-      }
-
-      // Use file-based auth state for reliability
-      const authState = await useMultiFileAuthState(deviceSessionDir);
-      
-      // Validate that authState has required structure
-      if (!authState || typeof authState !== 'object') {
-        throw new Error(`Failed to create auth state for device ${deviceId}`);
-      }
-
-      // Ensure required functions exist
-      if (!authState.saveCreds || typeof authState.saveCreds !== 'function') {
-        throw new Error(`Auth state missing saveCreds function for device ${deviceId}`);
-      }
-
-      // Log the structure for debugging
-      this.logger.log(`Auth state loaded for device ${deviceId}`);
-      this.logger.debug(`Auth state structure: state=${!!authState.state}, saveCreds=${!!authState.saveCreds}`);
-      
-      return authState;
-    } catch (error) {
-      this.logger.error('Error getting auth state:', error);
-      throw error;
-    }
-  }
 
   private async saveAuthState(deviceId: string, authState: any): Promise<void> {
     try {
@@ -512,9 +508,11 @@ export class BaileysService {
 
   async clearDeviceSession(deviceId: string): Promise<void> {
     try {
-      const deviceSessionDir = path.join('./sessions', deviceId);
+      // Clear database session data
+      await this.databaseAuthState.clearDeviceSession(deviceId);
       
-      // Remove existing session files
+      // Clear file-based session (legacy support)
+      const deviceSessionDir = path.join('./sessions', deviceId);
       if (fs.existsSync(deviceSessionDir)) {
         const files = fs.readdirSync(deviceSessionDir);
         for (const file of files) {
@@ -533,6 +531,72 @@ export class BaileysService {
       
     } catch (error) {
       this.logger.error(`Error clearing session for device ${deviceId}:`, error);
+    }
+  }
+
+  /**
+   * Trigger initial sync of contacts and groups after connection
+   */
+  private async triggerInitialSync(deviceId: string, connection: any): Promise<void> {
+    try {
+      // Wait a bit for connection to stabilize
+      setTimeout(async () => {
+        try {
+          this.logger.log(`Starting initial sync for device ${deviceId}`);
+          
+          // Sync contacts
+          const contactResult = await this.whatsappSync.syncContacts(deviceId, connection);
+          this.logger.log(`Contact sync result: ${contactResult.synced} synced, ${contactResult.errors} errors`);
+          
+          // Sync groups
+          const groupResult = await this.whatsappSync.syncGroups(deviceId, connection);
+          this.logger.log(`Group sync result: ${groupResult.synced} synced, ${groupResult.errors} errors`);
+          
+        } catch (error) {
+          this.logger.error(`Initial sync failed for device ${deviceId}:`, error.message);
+        }
+      }, 5000); // 5 second delay
+      
+    } catch (error) {
+      this.logger.error(`Error triggering initial sync for device ${deviceId}:`, error.message);
+    }
+  }
+
+  private async getOrCreateAuthState(deviceId: string): Promise<any> {
+    try {
+      // Ensure sessions directory exists
+      const sessionsDir = './sessions';
+      const deviceSessionDir = path.join(sessionsDir, deviceId);
+      
+      if (!fs.existsSync(sessionsDir)) {
+        fs.mkdirSync(sessionsDir, { recursive: true });
+      }
+
+      if (!fs.existsSync(deviceSessionDir)) {
+        fs.mkdirSync(deviceSessionDir, { recursive: true });
+      }
+
+      // Use file-based auth state for reliability
+      const authState = await useMultiFileAuthState(deviceSessionDir);
+      
+      // Validate that authState has required structure
+      if (!authState || typeof authState !== 'object') {
+        throw new Error(`Failed to create auth state for device ${deviceId}`);
+      }
+
+      // Ensure required functions exist
+      if (!authState.saveCreds || typeof authState.saveCreds !== 'function') {
+        throw new Error(`Auth state missing saveCreds function for device ${deviceId}`);
+      }
+
+      // Log the structure for debugging
+      this.logger.log(`File-based auth state loaded for device ${deviceId}`);
+      this.logger.debug(`Auth state structure: state=${!!authState.state}, saveCreds=${!!authState.saveCreds}`);
+      
+      return authState;
+    } catch (error) {
+      this.logger.error('Error getting file-based auth state:', error);
+      throw error;
     }
   }
   
@@ -577,5 +641,9 @@ export class BaileysService {
   
   getAllConnectedDevices(): string[] {
     return Array.from(this.connections.keys());
+  }
+
+  getConnection(deviceId: string): any {
+    return this.connections.get(deviceId);
   }
 }

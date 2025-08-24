@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Request, Res, Req, HttpStatus, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards, Request, Res, Req, HttpStatus, Delete, Query } from '@nestjs/common';
 import { WhatsAppService } from './whatsapp.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { TenantScope } from '../auth/decorators/tenant-scope.decorator';
@@ -342,6 +342,146 @@ export class WhatsAppController {
     } catch (err) {
       responseData.error = 1;
       responseData.message = 'Error: Failed to get connection info!';
+      responseData.confidentialErrorMessage = err.message;
+      
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
+    }
+  }
+
+  @Get('devices/:deviceId/contacts')
+  @RequirePermissions(PERMISSIONS.VIEW_LOGS)
+  async getDeviceContacts(@Req() request, @Res() response, @Param('deviceId') deviceId: string, @Query('search') search?: string) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string | null;
+    } = {
+      message: 'Something went wrong!',
+      data: {},
+      error: 0,
+      confidentialErrorMessage: null
+    }
+    try {
+      const contacts = await this.whatsappService.getDeviceContacts(deviceId, request.user.userId, request.user.tenantId, search);
+      responseData.message = 'Contacts retrieved successfully';
+      responseData.data = contacts;
+      return response.status(HttpStatus.OK).json(responseData);
+    } catch (err) {
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to get contacts!';
+      responseData.confidentialErrorMessage = err.message;
+      
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
+    }
+  }
+
+  @Get('devices/:deviceId/groups')
+  @RequirePermissions(PERMISSIONS.VIEW_LOGS)
+  async getDeviceGroups(@Req() request, @Res() response, @Param('deviceId') deviceId: string, @Query('search') search?: string) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string | null;
+    } = {
+      message: 'Something went wrong!',
+      data: {},
+      error: 0,
+      confidentialErrorMessage: null
+    }
+    try {
+      const groups = await this.whatsappService.getDeviceGroups(deviceId, request.user.userId, request.user.tenantId, search);
+      responseData.message = 'Groups retrieved successfully';
+      responseData.data = groups;
+      return response.status(HttpStatus.OK).json(responseData);
+    } catch (err) {
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to get groups!';
+      responseData.confidentialErrorMessage = err.message;
+      
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
+    }
+  }
+
+  @Post('devices/:deviceId/sync/contacts')
+  @RequirePermissions(PERMISSIONS.VIEW_LOGS)
+  async syncDeviceContacts(@Req() request, @Res() response, @Param('deviceId') deviceId: string) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string | null;
+    } = {
+      message: 'Something went wrong!',
+      data: {},
+      error: 0,
+      confidentialErrorMessage: null
+    }
+    try {
+      const result = await this.whatsappService.syncDeviceContacts(deviceId, request.user.userId, request.user.tenantId);
+      responseData.message = 'Contact sync completed successfully';
+      responseData.data = result;
+      return response.status(HttpStatus.OK).json(responseData);
+    } catch (err) {
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to sync contacts!';
+      responseData.confidentialErrorMessage = err.message;
+      
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
+    }
+  }
+
+  @Post('devices/:deviceId/sync/groups')
+  @RequirePermissions(PERMISSIONS.VIEW_LOGS)
+  async syncDeviceGroups(@Req() request, @Res() response, @Param('deviceId') deviceId: string) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string | null;
+    } = {
+      message: 'Something went wrong!',
+      data: {},
+      error: 0,
+      confidentialErrorMessage: null
+    }
+    try {
+      const result = await this.whatsappService.syncDeviceGroups(deviceId, request.user.userId, request.user.tenantId);
+      responseData.message = 'Group sync completed successfully';
+      responseData.data = result;
+      return response.status(HttpStatus.OK).json(responseData);
+    } catch (err) {
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to sync groups!';
+      responseData.confidentialErrorMessage = err.message;
+      
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
+    }
+  }
+
+  @Get('devices/:deviceId/sync-stats')
+  @RequirePermissions(PERMISSIONS.VIEW_LOGS)
+  async getDeviceSyncStats(@Req() request, @Res() response, @Param('deviceId') deviceId: string) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string | null;
+    } = {
+      message: 'Something went wrong!',
+      data: {},
+      error: 0,
+      confidentialErrorMessage: null
+    }
+    try {
+      const stats = await this.whatsappService.getDeviceSyncStats(deviceId, request.user.userId, request.user.tenantId);
+      responseData.message = 'Sync stats retrieved successfully';
+      responseData.data = stats;
+      return response.status(HttpStatus.OK).json(responseData);
+    } catch (err) {
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to get sync stats!';
       responseData.confidentialErrorMessage = err.message;
       
       return response.status(HttpStatus.BAD_REQUEST).json(responseData);
