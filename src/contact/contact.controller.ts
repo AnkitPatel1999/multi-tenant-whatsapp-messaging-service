@@ -9,9 +9,7 @@ import { CreateContactDto } from '../dto/create-contact.dto';
 // @UseGuards(JwtAuthGuard, TenantScopeGuard)
 // @TenantScope()
 export class ContactController {
-  constructor(private contactService: ContactService) {
-    console.log('ContactController constructor called');
-  }
+  constructor(private contactService: ContactService) {}
 
 
   @Post()

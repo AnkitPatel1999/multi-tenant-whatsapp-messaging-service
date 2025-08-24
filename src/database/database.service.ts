@@ -1,7 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectConnection } from '@nestjs/mongoose';
 import { Connection } from 'mongoose';
-import { DATABASE_INDEXES } from './database.config';
 
 @Injectable()
 export class DatabaseService implements OnModuleInit {
@@ -10,54 +9,8 @@ export class DatabaseService implements OnModuleInit {
   constructor(@InjectConnection() private connection: Connection) {}
 
   async onModuleInit() {
-    await this.createIndexes();
+    // Index creation removed - indexes are now defined in schemas
     this.monitorConnection();
-  }
-
-  /**
-   * Create database indexes for optimal performance
-   */
-  private async createIndexes(): Promise<void> {
-    this.logger.log('Creating database indexes for optimal performance...');
-
-    try {
-      for (const [collectionName, indexes] of Object.entries(DATABASE_INDEXES)) {
-        if (!this.connection.db) {
-          this.logger.error('Database connection not available');
-          continue;
-        }
-        const collection = this.connection.db.collection(collectionName);
-        
-        for (const indexSpec of indexes) {
-          try {
-            // Check if index already exists
-            const existingIndexes = await collection.indexes();
-            const indexName = this.generateIndexName(indexSpec);
-            
-            const indexExists = existingIndexes.some(idx => 
-              idx.name === indexName || this.compareIndexSpecs(idx.key, indexSpec)
-            );
-
-            if (!indexExists) {
-              await collection.createIndex(indexSpec, {
-                background: true, // Non-blocking index creation
-                name: indexName,
-              });
-              
-              this.logger.log(`✅ Created index on ${collectionName}: ${JSON.stringify(indexSpec)}`);
-            } else {
-              this.logger.debug(`Index already exists on ${collectionName}: ${JSON.stringify(indexSpec)}`);
-            }
-          } catch (error) {
-            this.logger.error(`Failed to create index on ${collectionName}:`, error.message);
-          }
-        }
-      }
-      
-      this.logger.log('Database indexing completed');
-    } catch (error) {
-      this.logger.error('Failed to create indexes:', error.message);
-    }
   }
 
   /**
@@ -249,22 +202,6 @@ export class DatabaseService implements OnModuleInit {
       this.logger.error('Database health check failed:', error.message);
       return false;
     }
-  }
-
-  /**
-   * Generate consistent index names
-   */
-  private generateIndexName(indexSpec: any): string {
-    const keys = Object.keys(indexSpec).join('_');
-    const values = Object.values(indexSpec).join('_');
-    return `idx_${keys}_${values}`.replace(/[^a-zA-Z0-9_]/g, '_');
-  }
-
-  /**
-   * Compare index specifications for equality
-   */
-  private compareIndexSpecs(spec1: any, spec2: any): boolean {
-    return JSON.stringify(spec1) === JSON.stringify(spec2);
   }
 
   /**
