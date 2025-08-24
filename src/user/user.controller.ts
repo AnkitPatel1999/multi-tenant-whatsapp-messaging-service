@@ -16,61 +16,93 @@ export class UserController {
   @Post()
   @RequirePermissions(PERMISSIONS.CREATE_USER)
   async createUser(@Req() request, @Res() response, @Body() createUserDto: CreateUserDto) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string | null;
+    } = {
+      message: 'Something went wrong!',
+      data: {},
+      error: 0,
+      confidentialErrorMessage: null
+    }
     try {
       const userData: CreateUserData = {
         ...createUserDto,
         tenantId: request.user.tenantId,
       };
       const user = await this.userService.createUser(userData);
-      return response.status(HttpStatus.CREATED).json({
-        message: 'User has been created successfully',
-        user
-      });
+      responseData.message = 'User has been created successfully';
+      responseData.data = user;
+      return response.status(HttpStatus.CREATED).json(responseData);
     } catch (err) {
-      return response.status(HttpStatus.BAD_REQUEST).json({
-          statusCode: 400,
-          message: 'Error: User not created!',
-          error: 'Bad Request',
-          confidentialErrorMessage: err.message
-      });
+      responseData.error = 1;
+      responseData.message = 'Error: User not created!';
+      responseData.confidentialErrorMessage = err.message;
+      delete responseData.confidentialErrorMessage;
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }
 
   @Get()
   @RequirePermissions(PERMISSIONS.VIEW_LOGS)
   async getAllUsers(@Req() request, @Res() response) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string | null;
+    } = {
+      message: 'Something went wrong!',
+      data: {},
+      error: 0,
+      confidentialErrorMessage: null
+    }
     try {
       const users = await this.userService.getAllUsers(request.user.tenantId);
-      return response.status(HttpStatus.OK).json({
-        message: 'Users retrieved successfully',
-        users
-      });
+      responseData.message = 'Users retrieved successfully';
+      responseData.data = users;
+      return response.status(HttpStatus.OK).json(responseData);
     } catch (err) {
-      return response.status(HttpStatus.BAD_REQUEST).json({
-        statusCode: 400,
-        message: 'Error: Failed to retrieve users!',
-        error: 'Bad Request',
-        confidentialErrorMessage: err.message
-      });
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to retrieve users!';
+      responseData.confidentialErrorMessage = err.message;
+      delete responseData.confidentialErrorMessage;
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }
 
   @Get(':userId')
   @RequirePermissions(PERMISSIONS.VIEW_LOGS)
   async getUserById(@Req() request, @Res() response, @Param('userId') userId: string) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string | null;
+    } = {
+      message: 'Something went wrong!',
+      data: {},
+      error: 0,
+      confidentialErrorMessage: null
+    }
     try {
       const user = await this.userService.findById(userId);
-      return response.status(HttpStatus.OK).json({
-        message: 'User retrieved successfully',
-        user
-      });
+      if(!user) {
+        responseData.error = 1;
+        responseData.message = 'User not found';
+        return response.status(HttpStatus.NOT_FOUND).json(responseData);
+      }
+      responseData.message = 'User retrieved successfully';
+      responseData.data = user;
+      return response.status(HttpStatus.OK).json(responseData);
     } catch (err) {
-      return response.status(HttpStatus.BAD_REQUEST).json({
-        statusCode: 400,
-        message: 'Error: Failed to retrieve user!',
-        error: 'Bad Request',
-        confidentialErrorMessage: err.message
-      });
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to retrieve user!';
+      responseData.confidentialErrorMessage = err.message;
+      delete responseData.confidentialErrorMessage;
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }
 
@@ -82,38 +114,56 @@ export class UserController {
     @Param('userId') userId: string,
     @Body() body: { groupId: string }
   ) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string | null;
+    } = {
+      message: 'Something went wrong!',
+      data: {},
+      error: 0,
+      confidentialErrorMessage: null
+    }
     try {
       const user = await this.userService.assignUserToGroup(userId, body.groupId, request.user.tenantId);
-      return response.status(HttpStatus.OK).json({
-        message: 'User assigned to group successfully',
-        user
-      });
+      responseData.message = 'User assigned to group successfully';
+      responseData.data = user;
+      return response.status(HttpStatus.OK).json(responseData);
     } catch (err) {
-      return response.status(HttpStatus.BAD_REQUEST).json({
-        statusCode: 400,
-        message: 'Error: Failed to assign user to group!',
-        error: 'Bad Request',
-        confidentialErrorMessage: err.message
-      });
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to assign user to group!';
+      responseData.confidentialErrorMessage = err.message;
+      delete responseData.confidentialErrorMessage;
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }
 
   @Delete(':userId')
   @RequirePermissions(PERMISSIONS.DELETE_USER)
   async deleteUser(@Req() request, @Res() response, @Param('userId') userId: string) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string | null;
+    } = {
+      message: 'Something went wrong!',
+      data: {},
+      error: 0,
+      confidentialErrorMessage: null
+    }
     try {
       const result = await this.userService.deleteUser(userId, request.user.tenantId);
-      return response.status(HttpStatus.OK).json({
-        message: 'User deleted successfully',
-        ...result
-      });
+      responseData.message = 'User deleted successfully';
+      responseData.data = result;
+      return response.status(HttpStatus.OK).json(responseData);
     } catch (err) {
-      return response.status(HttpStatus.BAD_REQUEST).json({
-        statusCode: 400,
-        message: 'Error: Failed to delete user!',
-        error: 'Bad Request',
-        confidentialErrorMessage: err.message
-      });
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to delete user!';
+      responseData.confidentialErrorMessage = err.message;
+      delete responseData.confidentialErrorMessage;
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }
 }

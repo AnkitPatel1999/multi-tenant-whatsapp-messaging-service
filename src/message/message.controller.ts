@@ -18,6 +18,17 @@ export class MessageController {
     @Query('groupId') groupId?: string,
     @Query('limit') limit?: number,
   ) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string | null;
+    } = {
+      message: 'Something went wrong!',
+      data: {},
+      error: 0,
+      confidentialErrorMessage: null
+    }
     try {
       const messages = await this.messageService.getMessages(
         request.user.tenantId,
@@ -25,17 +36,15 @@ export class MessageController {
         groupId,
         limit || 50
       );
-      return response.status(HttpStatus.OK).json({
-        message: 'Messages retrieved successfully',
-        messages
-      });
+      responseData.message = 'Messages retrieved successfully';
+      responseData.data = messages;
+      return response.status(HttpStatus.OK).json(responseData);
     } catch (err) {
-      return response.status(HttpStatus.BAD_REQUEST).json({
-        statusCode: 400,
-        message: 'Error: Failed to retrieve messages!',
-        error: 'Bad Request',
-        confidentialErrorMessage: err.message
-      });
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to retrieve messages!';
+      responseData.confidentialErrorMessage = err.message;
+      delete responseData.confidentialErrorMessage;
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }
 }

@@ -12,24 +12,44 @@ export class ChatGroupController {
 
   @Get()
   async getGroups(@Req() request, @Res() response, @Query('userId') userId?: string) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string | null;
+    } = {
+      message: 'Something went wrong!',
+      data: {},
+      error: 0,
+      confidentialErrorMessage: null
+    }
     try {
       const groups = await this.chatGroupService.getGroups(request.user.tenantId, userId);
-      return response.status(HttpStatus.OK).json({
-        message: 'Groups retrieved successfully',
-        groups
-      });
+      responseData.message = 'Groups retrieved successfully';
+      responseData.data = groups;
+      return response.status(HttpStatus.OK).json(responseData);
     } catch (err) {
-      return response.status(HttpStatus.BAD_REQUEST).json({
-        statusCode: 400,
-        message: 'Error: Failed to retrieve groups!',
-        error: 'Bad Request',
-        confidentialErrorMessage: err.message
-      });
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to retrieve groups!';
+      responseData.confidentialErrorMessage = err.message;
+      delete responseData.confidentialErrorMessage;
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }
 
   @Post()
   async createGroup(@Req() request, @Res() response, @Body() createGroupDto: any) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string | null;
+    } = {
+      message: 'Something went wrong!',
+      data: {},
+      error: 0,
+      confidentialErrorMessage: null
+    }
     try {
       const groupData = {
         ...createGroupDto,
@@ -37,17 +57,15 @@ export class ChatGroupController {
         userId: request.user.userId,
       };
       const group = await this.chatGroupService.createGroup(groupData);
-      return response.status(HttpStatus.CREATED).json({
-        message: 'Group has been created successfully',
-        group
-      });
+      responseData.message = 'Group has been created successfully';
+      responseData.data = group;
+      return response.status(HttpStatus.CREATED).json(responseData);
     } catch (err) {
-      return response.status(HttpStatus.BAD_REQUEST).json({
-        statusCode: 400,
-        message: 'Error: Group not created!',
-        error: 'Bad Request',
-        confidentialErrorMessage: err.message
-      });
+      responseData.error = 1;
+      responseData.message = 'Error: Group not created!';
+      responseData.confidentialErrorMessage = err.message;
+      delete responseData.confidentialErrorMessage;
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }
 }

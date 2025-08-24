@@ -12,24 +12,44 @@ export class ContactController {
 
   @Get()
   async getContacts(@Req() request, @Res() response, @Query('userId') userId?: string) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string | null;
+    } = {
+      message: 'Something went wrong!',
+      data: {},
+      error: 0,
+      confidentialErrorMessage: null
+    }
     try {
       const contacts = await this.contactService.getContacts(request.user.tenantId, userId);
-      return response.status(HttpStatus.OK).json({
-        message: 'Contacts retrieved successfully',
-        contacts
-      });
+      responseData.message = 'Contacts retrieved successfully';
+      responseData.data = contacts;
+      return response.status(HttpStatus.OK).json(responseData);
     } catch (err) {
-      return response.status(HttpStatus.BAD_REQUEST).json({
-        statusCode: 400,
-        message: 'Error: Failed to retrieve contacts!',
-        error: 'Bad Request',
-        confidentialErrorMessage: err.message
-      });
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to retrieve contacts!';
+      responseData.confidentialErrorMessage = err.message;
+      delete responseData.confidentialErrorMessage;
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }
 
   @Post()
   async createContact(@Req() request, @Res() response, @Body() createContactDto: any) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string | null;
+    } = {
+      message: 'Something went wrong!',
+      data: {},
+      error: 0,
+      confidentialErrorMessage: null
+    }
     try {
       const contactData = {
         ...createContactDto,
@@ -37,17 +57,15 @@ export class ContactController {
         userId: request.user.userId,
       };
       const contact = await this.contactService.createContact(contactData);
-      return response.status(HttpStatus.CREATED).json({
-        message: 'Contact has been created successfully',
-        contact
-      });
+      responseData.message = 'Contact has been created successfully';
+      responseData.data = contact;
+      return response.status(HttpStatus.CREATED).json(responseData);
     } catch (err) {
-      return response.status(HttpStatus.BAD_REQUEST).json({
-        statusCode: 400,
-        message: 'Error: Contact not created!',
-        error: 'Bad Request',
-        confidentialErrorMessage: err.message
-      });
+      responseData.error = 1;
+      responseData.message = 'Error: Contact not created!';
+      responseData.confidentialErrorMessage = err.message;
+      delete responseData.confidentialErrorMessage;
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }
 }

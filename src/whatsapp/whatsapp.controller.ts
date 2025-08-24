@@ -12,55 +12,82 @@ export class WhatsAppController {
 
   @Get('devices')
   async getDevices(@Req() request, @Res() response) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string | null;
+    } = {
+      message: 'Something went wrong!',
+      data: {},
+      error: 0,
+      confidentialErrorMessage: null
+    }
     try {
       const devices = await this.whatsappService.getDevices(request.user.userId, request.user.tenantId);
-      return response.status(HttpStatus.OK).json({
-        message: 'Devices retrieved successfully',
-        devices
-      });
+      responseData.message = 'Devices retrieved successfully';
+      responseData.data = devices;
+      return response.status(HttpStatus.OK).json(responseData);
     } catch (err) {
-      return response.status(HttpStatus.BAD_REQUEST).json({
-        statusCode: 400,
-        message: 'Error: Failed to retrieve devices!',
-        error: 'Bad Request',
-        confidentialErrorMessage: err.message
-      });
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to retrieve devices!';
+      responseData.confidentialErrorMessage = err.message;
+      delete responseData.confidentialErrorMessage;
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }
 
   @Post('devices')
   async createDevice(@Req() request, @Res() response, @Body() createDeviceDto: { deviceName: string }) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string | null;
+    } = {
+      message: 'Something went wrong!',
+      data: {},
+      error: 0,
+      confidentialErrorMessage: null
+    }
     try {
       const device = await this.whatsappService.createDevice(request.user.userId, request.user.tenantId, createDeviceDto.deviceName);
-      return response.status(HttpStatus.CREATED).json({
-        message: 'Device has been created successfully',
-        device
-      });
+      responseData.message = 'Device has been created successfully';
+      responseData.data = device;
+      return response.status(HttpStatus.CREATED).json(responseData);
     } catch (err) {
-      return response.status(HttpStatus.BAD_REQUEST).json({
-        statusCode: 400,
-        message: 'Error: Device not created!',
-        error: 'Bad Request',
-        confidentialErrorMessage: err.message
-      });
+      responseData.error = 1;
+      responseData.message = 'Error: Device not created!';
+      responseData.confidentialErrorMessage = err.message;
+      delete responseData.confidentialErrorMessage;
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }
 
   @Post('devices/:deviceId/qr')
   async generateQRCode(@Req() request, @Res() response, @Param('deviceId') deviceId: string) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string | null;
+    } = {
+      message: 'Something went wrong!',
+      data: {},
+      error: 0,
+      confidentialErrorMessage: null
+    }
     try {
       const result = await this.whatsappService.generateQRCode(deviceId, request.user.userId, request.user.tenantId);
-      return response.status(HttpStatus.OK).json({
-        message: 'QR code generated successfully',
-        ...result
-      });
+      responseData.message = 'QR code generated successfully';
+      responseData.data = result;
+      return response.status(HttpStatus.OK).json(responseData);
     } catch (err) {
-      return response.status(HttpStatus.BAD_REQUEST).json({
-        statusCode: 400,
-        message: 'Error: Failed to generate QR code!',
-        error: 'Bad Request',
-        confidentialErrorMessage: err.message
-      });
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to generate QR code!';
+      responseData.confidentialErrorMessage = err.message;
+      delete responseData.confidentialErrorMessage;
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }
 
@@ -70,6 +97,17 @@ export class WhatsAppController {
     @Res() response,
     @Body() sendMessageDto: { deviceId: string; to: string; message: string; type?: 'text' | 'media' }
   ) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string | null;
+    } = {
+      message: 'Something went wrong!',
+      data: {},
+      error: 0,
+      confidentialErrorMessage: null
+    }
     try {
       const result = await this.whatsappService.sendMessage(
         sendMessageDto.deviceId,
@@ -79,35 +117,42 @@ export class WhatsAppController {
         sendMessageDto.message,
         sendMessageDto.type || 'text'
       );
-      return response.status(HttpStatus.OK).json({
-        message: 'Message sent successfully',
-        ...result
-      });
+      responseData.message = 'Message sent successfully';
+      responseData.data = result;
+      return response.status(HttpStatus.OK).json(responseData);
     } catch (err) {
-      return response.status(HttpStatus.BAD_REQUEST).json({
-        statusCode: 400,
-        message: 'Error: Failed to send message!',
-        error: 'Bad Request',
-        confidentialErrorMessage: err.message
-      });
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to send message!';
+      responseData.confidentialErrorMessage = err.message;
+      delete responseData.confidentialErrorMessage;
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }
 
   @Post('devices/:deviceId/disconnect')
   async disconnectDevice(@Req() request, @Res() response, @Param('deviceId') deviceId: string) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string | null;
+    } = {
+      message: 'Something went wrong!',
+      data: {},
+      error: 0,
+      confidentialErrorMessage: null
+    }
     try {
       const result = await this.whatsappService.disconnectDevice(deviceId, request.user.userId, request.user.tenantId);
-      return response.status(HttpStatus.OK).json({
-        message: 'Device disconnected successfully',
-        ...result
-      });
+      responseData.message = 'Device disconnected successfully';
+      responseData.data = result;
+      return response.status(HttpStatus.OK).json(responseData);
     } catch (err) {
-      return response.status(HttpStatus.BAD_REQUEST).json({
-        statusCode: 400,
-        message: 'Error: Failed to disconnect device!',
-        error: 'Bad Request',
-        confidentialErrorMessage: err.message
-      });
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to disconnect device!';
+      responseData.confidentialErrorMessage = err.message;
+      delete responseData.confidentialErrorMessage;
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }
 }
