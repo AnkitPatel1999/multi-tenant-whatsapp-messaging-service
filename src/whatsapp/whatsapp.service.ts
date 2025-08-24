@@ -15,118 +15,93 @@ export class WhatsAppService {
   ) {}
 
   async createDevice(userId: string, tenantId: string, deviceName: string): Promise<WhatsAppDeviceDocument> {
-    try {
-      const deviceId = uuidv4();
-      
-      const device = new this.deviceModel({
-        deviceId,
-        userId,
-        tenantId,
-        deviceName,
-        isActive: true,
-      });
+    const deviceId = uuidv4();
+    
+    const device = new this.deviceModel({
+      deviceId,
+      userId,
+      tenantId,
+      deviceName,
+      isActive: true,
+    });
 
-      await device.save();
-      
-      // Create Baileys connection
-      await this.baileysService.createConnection(deviceId, userId, tenantId);
-      
-      return device;
-    } catch (error) {
-      this.logger.error('Error creating device:', error);
-      throw error;
-    }
+    await device.save();
+    
+    // Create Baileys connection
+    await this.baileysService.createConnection(deviceId, userId, tenantId);
+    
+    return device;
   }
 
   async getDevices(userId: string, tenantId: string): Promise<any[]> {
-    try {
-      const devices = await this.deviceModel.find({ userId, tenantId, isActive: true });
-      
-      // Get connection status for each device
-      const devicesWithStatus = await Promise.all(
-        devices.map(async (device) => {
-          const status = await this.baileysService.getConnectionStatus(device.deviceId);
-          return { ...device.toObject(), connectionStatus: status };
-        })
-      );
-      
-      return devicesWithStatus;
-    } catch (error) {
-      this.logger.error('Error getting devices:', error);
-      throw error;
-    }
+    const devices = await this.deviceModel.find({ userId, tenantId, isActive: true });
+    
+    // Get connection status for each device
+    const devicesWithStatus = await Promise.all(
+      devices.map(async (device) => {
+        const status = await this.baileysService.getConnectionStatus(device.deviceId);
+        return { ...device.toObject(), connectionStatus: status };
+      })
+    );
+    
+    return devicesWithStatus;
   }
 
   async generateQRCode(deviceId: string, userId: string, tenantId: string): Promise<any> {
-    try {
-      const device = await this.deviceModel.findOne({ deviceId, userId, tenantId });
-      if (!device) {
-        throw new Error('Device not found');
-      }
-
-      // Create or reconnect to get fresh QR code
-      await this.baileysService.createConnection(deviceId, userId, tenantId);
-      
-      // Wait a bit for QR generation
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      const status = await this.baileysService.getConnectionStatus(deviceId);
-      
-      return {
-        deviceId,
-        qrCode: status.deviceInfo?.qrCode,
-        qrExpiry: status.deviceInfo?.qrExpiry,
-        isConnected: status.isConnected,
-      };
-    } catch (error) {
-      this.logger.error('Error generating QR code:', error);
-      throw error;
+    const device = await this.deviceModel.findOne({ deviceId, userId, tenantId });
+    if (!device) {
+      throw new Error('Device not found');
     }
+
+    // Create or reconnect to get fresh QR code
+    await this.baileysService.createConnection(deviceId, userId, tenantId);
+    
+    // Wait a bit for QR generation
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    const status = await this.baileysService.getConnectionStatus(deviceId);
+    
+    return {
+      deviceId,
+      qrCode: status.deviceInfo?.qrCode,
+      qrExpiry: status.deviceInfo?.qrExpiry,
+      isConnected: status.isConnected,
+    };
   }
 
   async sendMessage(deviceId: string, userId: string, tenantId: string, to: string, message: string, type: 'text' | 'media' = 'text'): Promise<any> {
-    try {
-      const device = await this.deviceModel.findOne({ deviceId, userId, tenantId });
-      if (!device) {
-        throw new Error('Device not found');
-      }
-
-      if (!device.isConnected) {
-        throw new Error('Device not connected');
-      }
-
-      const result = await this.baileysService.sendMessage(deviceId, to, message, type);
-      
-      return {
-        success: true,
-        messageId: result.messageId,
-        timestamp: new Date(),
-      };
-    } catch (error) {
-      this.logger.error('Error sending message:', error);
-      throw error;
+    const device = await this.deviceModel.findOne({ deviceId, userId, tenantId });
+    if (!device) {
+      throw new Error('Device not found');
     }
+
+    if (!device.isConnected) {
+      throw new Error('Device not connected');
+    }
+
+    const result = await this.baileysService.sendMessage(deviceId, to, message, type);
+    
+    return {
+      success: true,
+      messageId: result.messageId,
+      timestamp: new Date(),
+    };
   }
 
   async disconnectDevice(deviceId: string, userId: string, tenantId: string): Promise<any> {
-    try {
-      const device = await this.deviceModel.findOne({ deviceId, userId, tenantId });
-      if (!device) {
-        throw new Error('Device not found');
-      }
-
-      // Disconnect from Baileys
-      await this.baileysService.disconnectConnection(deviceId);
-      
-      // Update device status
-      device.isConnected = false;
-      device.lastConnectedAt = new Date();
-      await device.save();
-      
-      return { success: true, message: 'Device disconnected successfully' };
-    } catch (error) {
-      this.logger.error('Error disconnecting device:', error);
-      throw error;
+    const device = await this.deviceModel.findOne({ deviceId, userId, tenantId });
+    if (!device) {
+      throw new Error('Device not found');
     }
+
+    // Disconnect from Baileys
+    await this.baileysService.disconnectConnection(deviceId);
+    
+    // Update device status
+    device.isConnected = false;
+    device.lastConnectedAt = new Date();
+    await device.save();
+    
+    return { success: true, message: 'Device disconnected successfully' };
   }
 }

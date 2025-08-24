@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards, Request, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Request, Query, Res, Req, HttpStatus } from '@nestjs/common';
 import { ChatGroupService } from './chat-group.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { TenantScope } from '../auth/decorators/tenant-scope.decorator';
@@ -11,16 +11,43 @@ export class ChatGroupController {
   constructor(private chatGroupService: ChatGroupService) {}
 
   @Get()
-  async getGroups(@Request() req, @Query('userId') userId?: string) {
-    return this.chatGroupService.getGroups(req.user.tenantId, userId);
+  async getGroups(@Req() request, @Res() response, @Query('userId') userId?: string) {
+    try {
+      const groups = await this.chatGroupService.getGroups(request.user.tenantId, userId);
+      return response.status(HttpStatus.OK).json({
+        message: 'Groups retrieved successfully',
+        groups
+      });
+    } catch (err) {
+      return response.status(HttpStatus.BAD_REQUEST).json({
+        statusCode: 400,
+        message: 'Error: Failed to retrieve groups!',
+        error: 'Bad Request',
+        confidentialErrorMessage: err.message
+      });
+    }
   }
 
   @Post()
-  async createGroup(@Request() req, @Body() createGroupDto: any) {
-    return this.chatGroupService.createGroup({
-      ...createGroupDto,
-      tenantId: req.user.tenantId,
-      userId: req.user.userId,
-    });
+  async createGroup(@Req() request, @Res() response, @Body() createGroupDto: any) {
+    try {
+      const groupData = {
+        ...createGroupDto,
+        tenantId: request.user.tenantId,
+        userId: request.user.userId,
+      };
+      const group = await this.chatGroupService.createGroup(groupData);
+      return response.status(HttpStatus.CREATED).json({
+        message: 'Group has been created successfully',
+        group
+      });
+    } catch (err) {
+      return response.status(HttpStatus.BAD_REQUEST).json({
+        statusCode: 400,
+        message: 'Error: Group not created!',
+        error: 'Bad Request',
+        confidentialErrorMessage: err.message
+      });
+    }
   }
 }

@@ -13,28 +13,18 @@ export class ContactService {
   ) {}
 
   async getContacts(tenantId: string, userId?: string): Promise<ContactDocument[]> {
-    try {
-      const filter: any = { tenantId, isActive: true };
-      if (userId) filter.userId = userId;
+    const filter: any = { tenantId, isActive: true };
+    if (userId) filter.userId = userId;
 
-      return await this.contactModel.find(filter).exec();
-    } catch (error) {
-      this.logger.error('Error getting contacts:', error);
-      throw error;
-    }
+    return await this.contactModel.find(filter).exec();
   }
 
   async createContact(contactData: Partial<Contact>): Promise<ContactDocument> {
-    try {
-      const contact = new this.contactModel({
-        contactId: uuidv4(),
-        ...contactData,
-      });
+    const contact = new this.contactModel({
+      contactId: uuidv4(),
+      ...contactData,
+    });
 
-      return await contact.save();
-    } catch (error) {
-      this.logger.error('Error creating contact:', error);
-      throw error;
-    }
+    return await contact.save();
   }
 }

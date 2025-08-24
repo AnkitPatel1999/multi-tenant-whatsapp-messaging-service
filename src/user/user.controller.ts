@@ -13,7 +13,6 @@ import { PERMISSIONS } from '../auth/constants/permissions';
 export class UserController {
   constructor(private readonly userService: UserService) {}
 
-
   @Post()
   @RequirePermissions(PERMISSIONS.CREATE_USER)
   async createUser(@Req() request, @Res() response, @Body() createUserDto: CreateUserDto) {
@@ -24,65 +23,97 @@ export class UserController {
       };
       const user = await this.userService.createUser(userData);
       return response.status(HttpStatus.CREATED).json({
-        message: 'user has been created successfully',
+        message: 'User has been created successfully',
         user
       });
     } catch (err) {
       return response.status(HttpStatus.BAD_REQUEST).json({
           statusCode: 400,
-          message: 'Error: user not created!',
+          message: 'Error: User not created!',
           error: 'Bad Request',
           confidentialErrorMessage: err.message
       });
     }
   }
 
-
-  // @Post()
-  // @RequirePermissions(PERMISSIONS.CREATE_USER)
-  // // Create a new user (Admin only)
-  // async createUser(@Request()  req, @Body() createUserDto: CreateUserDto) {
-  //   try {
-  //     console.log("request ",req.user)
-  //     console.log("createUserDto ",createUserDto)
-  //     return this.userService.createUser({
-  //       ...createUserDto,
-  //       tenantId: req.user.tenantId,
-  //     });
-  //   } catch (error) {
-  //     // return
-  //   }
-  // }
-
   @Get()
   @RequirePermissions(PERMISSIONS.VIEW_LOGS)
-  // Get all users for the tenant
-  async getAllUsers(@Request() req) {
-    return this.userService.getAllUsers(req.user.tenantId);
+  async getAllUsers(@Req() request, @Res() response) {
+    try {
+      const users = await this.userService.getAllUsers(request.user.tenantId);
+      return response.status(HttpStatus.OK).json({
+        message: 'Users retrieved successfully',
+        users
+      });
+    } catch (err) {
+      return response.status(HttpStatus.BAD_REQUEST).json({
+        statusCode: 400,
+        message: 'Error: Failed to retrieve users!',
+        error: 'Bad Request',
+        confidentialErrorMessage: err.message
+      });
+    }
   }
 
   @Get(':userId')
   @RequirePermissions(PERMISSIONS.VIEW_LOGS)
-  // Get user by ID
-  async getUserById(@Request() req, @Param('userId') userId: string) {
-    return this.userService.findById(userId);
+  async getUserById(@Req() request, @Res() response, @Param('userId') userId: string) {
+    try {
+      const user = await this.userService.findById(userId);
+      return response.status(HttpStatus.OK).json({
+        message: 'User retrieved successfully',
+        user
+      });
+    } catch (err) {
+      return response.status(HttpStatus.BAD_REQUEST).json({
+        statusCode: 400,
+        message: 'Error: Failed to retrieve user!',
+        error: 'Bad Request',
+        confidentialErrorMessage: err.message
+      });
+    }
   }
 
   @Put(':userId/group')
   @RequirePermissions(PERMISSIONS.ASSIGN_USERS_TO_GROUPS)
-  // Assign user to a group (Admin only)
   async assignUserToGroup(
-    @Request() req,
+    @Req() request,
+    @Res() response,
     @Param('userId') userId: string,
     @Body() body: { groupId: string }
   ) {
-    return this.userService.assignUserToGroup(userId, body.groupId, req.user.tenantId);
+    try {
+      const user = await this.userService.assignUserToGroup(userId, body.groupId, request.user.tenantId);
+      return response.status(HttpStatus.OK).json({
+        message: 'User assigned to group successfully',
+        user
+      });
+    } catch (err) {
+      return response.status(HttpStatus.BAD_REQUEST).json({
+        statusCode: 400,
+        message: 'Error: Failed to assign user to group!',
+        error: 'Bad Request',
+        confidentialErrorMessage: err.message
+      });
+    }
   }
 
   @Delete(':userId')
   @RequirePermissions(PERMISSIONS.DELETE_USER)
-  // Delete a user (Admin only)
-  async deleteUser(@Request() req, @Param('userId') userId: string) {
-    return this.userService.deleteUser(userId, req.user.tenantId);
+  async deleteUser(@Req() request, @Res() response, @Param('userId') userId: string) {
+    try {
+      const result = await this.userService.deleteUser(userId, request.user.tenantId);
+      return response.status(HttpStatus.OK).json({
+        message: 'User deleted successfully',
+        ...result
+      });
+    } catch (err) {
+      return response.status(HttpStatus.BAD_REQUEST).json({
+        statusCode: 400,
+        message: 'Error: Failed to delete user!',
+        error: 'Bad Request',
+        confidentialErrorMessage: err.message
+      });
+    }
   }
 }

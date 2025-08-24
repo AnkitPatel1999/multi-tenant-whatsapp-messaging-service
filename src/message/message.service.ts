@@ -13,35 +13,25 @@ export class MessageService {
   ) {}
 
   async getMessages(tenantId: string, userId?: string, groupId?: string, limit: number = 50): Promise<MessageLogDocument[]> {
-    try {
-      const filter: any = { tenantId };
-      
-      if (userId) filter.userId = userId;
-      if (groupId) filter.groupId = groupId;
+    const filter: any = { tenantId };
+    
+    if (userId) filter.userId = userId;
+    if (groupId) filter.groupId = groupId;
 
-      return await this.messageLogModel
-        .find(filter)
-        .sort({ timestamp: -1 })
-        .limit(limit)
-        .exec();
-    } catch (error) {
-      this.logger.error('Error getting messages:', error);
-      throw error;
-    }
+    return await this.messageLogModel
+      .find(filter)
+      .sort({ timestamp: -1 })
+      .limit(limit)
+      .exec();
   }
 
   async logMessage(messageData: Partial<MessageLog>): Promise<MessageLogDocument> {
-    try {
-      const messageLog = new this.messageLogModel({
-        messageId: uuidv4(),
-        timestamp: new Date(),
-        ...messageData,
-      });
+    const messageLog = new this.messageLogModel({
+      messageId: uuidv4(),
+      timestamp: new Date(),
+      ...messageData,
+    });
 
-      return await messageLog.save();
-    } catch (error) {
-      this.logger.error('Error logging message:', error);
-      throw error;
-    }
+    return await messageLog.save();
   }
 }

@@ -13,28 +13,18 @@ export class ChatGroupService {
   ) {}
 
   async getGroups(tenantId: string, userId?: string): Promise<ChatGroupDocument[]> {
-    try {
-      const filter: any = { tenantId, isActive: true };
-      if (userId) filter.userId = userId;
+    const filter: any = { tenantId, isActive: true };
+    if (userId) filter.userId = userId;
 
-      return await this.chatGroupModel.find(filter).exec();
-    } catch (error) {
-      this.logger.error('Error getting groups:', error);
-      throw error;
-    }
+    return await this.chatGroupModel.find(filter).exec();
   }
 
   async createGroup(groupData: Partial<ChatGroup>): Promise<ChatGroupDocument> {
-    try {
-      const group = new this.chatGroupModel({
-        groupId: uuidv4(),
-        ...groupData,
-      });
+    const group = new this.chatGroupModel({
+      groupId: uuidv4(),
+      ...groupData,
+    });
 
-      return await group.save();
-    } catch (error) {
-      this.logger.error('Error creating group:', error);
-      throw error;
-    }
+    return await group.save();
   }
 }
