@@ -4,10 +4,13 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { TenantScope } from '../auth/decorators/tenant-scope.decorator';
 import { TenantScopeGuard } from '../auth/guards/tenant-scope.guard';
 import { CreateContactDto } from '../dto/create-contact.dto';
+import { PermissionGuard, RequirePermissions } from '../auth/guards/permission.guard';
+import { PERMISSIONS } from '../auth/constants/permissions';
+import { GetContactsQueryDto } from '../dto/get-contacts-query.dto';
 
 @Controller('contacts')
-// @UseGuards(JwtAuthGuard, TenantScopeGuard)
-// @TenantScope()
+@UseGuards(JwtAuthGuard, TenantScopeGuard, PermissionGuard)
+@TenantScope()
 export class ContactController {
   constructor(private contactService: ContactService) {
     console.log('ContactController constructor called');
@@ -15,6 +18,7 @@ export class ContactController {
 
 
   @Post()
+  @RequirePermissions(PERMISSIONS.MANAGE_CONTACTS)
   async createContact(@Req() request, @Res() response, @Body() createContactDto: CreateContactDto) {
     console.log('createContact api called');
     const responseData: {
@@ -36,15 +40,14 @@ export class ContactController {
         contactName: typeof createContactDto.contactName,
         phoneNumber: typeof createContactDto.phoneNumber
       });
-      // console.log('User info:', { tenantId: request.user.tenantId, userId: request.user.userId });
       
       const contactData = {
         contactName: createContactDto.contactName,
         phoneNumber: createContactDto.phoneNumber,
         email: createContactDto.email,
         notes: createContactDto.notes,
-        tenantId: 'test-tenant-id', // Temporary for testing
-        userId: 'test-user-id', // Temporary for testing
+        tenantId: request.user.tenantId,
+        userId: request.user.userId,
         isActive: true
       };
       
@@ -66,7 +69,8 @@ export class ContactController {
 
   
   @Get()
-  async getContacts(@Req() request, @Res() response, @Query('userId') userId?: string) {
+  @RequirePermissions(PERMISSIONS.VIEW_CONTACTS)
+  async getContacts(@Req() request, @Res() response, @Query() query: GetContactsQueryDto) {
     const responseData: {
       message: string;
       data: any;
@@ -79,7 +83,7 @@ export class ContactController {
       confidentialErrorMessage: null
     }
     try {
-      const contacts = await this.contactService.getContacts(request.user.tenantId, userId);
+      const contacts = await this.contactService.getContacts(request.user.tenantId, query.userId);
       responseData.message = 'Contacts retrieved successfully';
       responseData.data = contacts;
       return response.status(HttpStatus.OK).json(responseData);

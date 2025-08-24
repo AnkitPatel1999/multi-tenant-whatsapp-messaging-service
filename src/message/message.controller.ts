@@ -3,20 +3,22 @@ import { MessageService } from './message.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { TenantScope } from '../auth/decorators/tenant-scope.decorator';
 import { TenantScopeGuard } from '../auth/guards/tenant-scope.guard';
+import { PermissionGuard, RequirePermissions } from '../auth/guards/permission.guard';
+import { PERMISSIONS } from '../auth/constants/permissions';
+import { GetMessagesQueryDto } from '../dto/get-messages-query.dto';
 
 @Controller('messages')
-@UseGuards(JwtAuthGuard, TenantScopeGuard)
+@UseGuards(JwtAuthGuard, TenantScopeGuard, PermissionGuard)
 @TenantScope()
 export class MessageController {
   constructor(private messageService: MessageService) {}
 
   @Get()
+  @RequirePermissions(PERMISSIONS.VIEW_LOGS)
   async getMessages(
     @Req() request,
     @Res() response,
-    @Query('userId') userId?: string,
-    @Query('groupId') groupId?: string,
-    @Query('limit') limit?: number,
+    @Query() query: GetMessagesQueryDto,
   ) {
     const responseData: {
       message: string;
@@ -32,9 +34,9 @@ export class MessageController {
     try {
       const messages = await this.messageService.getMessages(
         request.user.tenantId,
-        userId,
-        groupId,
-        limit || 50
+        query.userId,
+        query.groupId,
+        query.limit || 50
       );
       responseData.message = 'Messages retrieved successfully';
       responseData.data = messages;

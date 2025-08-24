@@ -16,14 +16,31 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({
     transform: true,
     whitelist: true,
+    forbidNonWhitelisted: true,
+    transformOptions: { enableImplicitConversion: true },
   }));
 
-  // Add request logging middleware
+  // Add request logging middleware with masking
   app.use((req, res, next) => {
+    const mask = (obj: any) => {
+      try {
+        if (!obj || typeof obj !== 'object') return obj;
+        const clone: any = Array.isArray(obj) ? [...obj] : { ...obj };
+        const SENSITIVE_KEYS = ['authorization', 'password', 'token', 'access_token', 'refresh_token'];
+        for (const key of Object.keys(clone)) {
+          if (SENSITIVE_KEYS.includes(key.toLowerCase())) {
+            clone[key] = '[REDACTED]';
+          }
+        }
+        return clone;
+      } catch {
+        return obj;
+      }
+    };
     console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
-    console.log('Headers:', JSON.stringify(req.headers, null, 2));
+    console.log('Headers:', JSON.stringify(mask(req.headers), null, 2));
     if (req.body) {
-      console.log('Body:', JSON.stringify(req.body, null, 2));
+      console.log('Body:', JSON.stringify(mask(req.body), null, 2));
     }
     next();
   });
