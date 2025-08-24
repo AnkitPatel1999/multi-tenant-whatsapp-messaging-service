@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Body, Param, UseGuards, Request, Res, Req, HttpStatus, Delete, Query } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { WhatsAppService } from './whatsapp.service';
 import { WhatsAppMessageService } from './message/whatsapp-message.service';
 import { BaileysService } from './baileys.service';
@@ -17,6 +18,8 @@ import {
 } from '../dto/whatsapp.dto';
 
 @Controller('whatsapp')
+@ApiTags('whatsapp')
+@ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard, TenantScopeGuard, PermissionGuard)
 @TenantScope()
 export class WhatsAppController {

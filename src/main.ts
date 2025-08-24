@@ -34,12 +34,13 @@ async function bootstrap() {
     .setTitle('Alchemy Backend API')
     .setDescription('WhatsApp messaging backend API with multi-tenant support')
     .setVersion('1.0')
-    .addTag('auth', 'Authentication endpoints')
-    .addTag('users', 'User management endpoints')
-    .addTag('whatsapp', 'WhatsApp device and messaging endpoints')
-    .addTag('contacts', 'Contact management endpoints')
-    .addTag('messages', 'Message management endpoints')
-    .addTag('chat-groups', 'Chat group management endpoints')
+    .addTag('app', 'API health and information endpoints')
+    .addTag('auth', 'Authentication endpoints - Login and JWT token management')
+    .addTag('users', 'User management endpoints - CRUD operations for users')
+    .addTag('whatsapp', 'WhatsApp device and messaging endpoints - Device management and message sending')
+    .addTag('contacts', 'Contact management endpoints - WhatsApp contact synchronization')
+    .addTag('messages', 'Message management endpoints - Message history and analytics')
+    .addTag('chat-groups', 'Chat group management endpoints - WhatsApp group operations')
     .addBearerAuth(
       {
         type: 'http',

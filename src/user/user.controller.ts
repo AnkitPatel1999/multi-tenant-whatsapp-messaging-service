@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Put, Body, Param, UseGuards, Request, Delete, Res, Req, HttpStatus } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { UserService } from './user.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { TenantScope } from '../auth/decorators/tenant-scope.decorator';
@@ -8,6 +9,8 @@ import { CreateUserDto, CreateUserData } from '../dto/create-user.dto';
 import { PERMISSIONS } from '../auth/constants/permissions';
 
 @Controller('users')
+@ApiTags('users')
+@ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard, TenantScopeGuard, PermissionGuard)
 @TenantScope()
 export class UserController {

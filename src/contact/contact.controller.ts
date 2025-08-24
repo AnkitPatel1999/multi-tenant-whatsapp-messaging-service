@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Body, UseGuards, Request, Query, Res, Req, HttpStatus } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { ContactService } from './contact.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { TenantScope } from '../auth/decorators/tenant-scope.decorator';
@@ -6,6 +7,8 @@ import { TenantScopeGuard } from '../auth/guards/tenant-scope.guard';
 import { CreateContactDto } from '../dto/create-contact.dto';
 
 @Controller('contacts')
+@ApiTags('contacts')
+@ApiBearerAuth('JWT-auth')
 // @UseGuards(JwtAuthGuard, TenantScopeGuard)
 // @TenantScope()
 export class ContactController {
