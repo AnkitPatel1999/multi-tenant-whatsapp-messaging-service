@@ -120,18 +120,35 @@ export class WhatsAppService {
       throw new NotFoundException('Device not found');
     }
 
-    if (!device.isConnected) {
-      throw new NotFoundException('Device not connected');
+    // Check actual connection status from BaileysService instead of database
+    try {
+      const connectionStatus = await this.baileysService.getConnectionStatus(sendMessageData.deviceId);
+      if (!connectionStatus.isConnected) {
+        throw new NotFoundException('Device not connected to WhatsApp. Please connect the device first.');
+      }
+    } catch (error) {
+      this.logger.error(`Error checking connection status for device ${sendMessageData.deviceId}:`, error.message);
+      throw new NotFoundException('Device not connected to WhatsApp. Please connect the device first.');
     }
 
-    const result = await this.baileysService.sendMessage(
-      sendMessageData.deviceId, 
-      sendMessageData.to, 
-      sendMessageData.message, 
-      sendMessageData.type || 'text'
-    );
-    
-    return result;
+    try {
+      const result = await this.baileysService.sendMessage(
+        sendMessageData.deviceId, 
+        sendMessageData.to, 
+        sendMessageData.message, 
+        sendMessageData.type || 'text'
+      );
+      
+      // Ensure we return a proper result structure
+      return {
+        success: result?.success || false,
+        messageId: result?.messageId || undefined,
+        timestamp: result?.timestamp || new Date()
+      };
+    } catch (error) {
+      this.logger.error(`Error sending message from device ${sendMessageData.deviceId}:`, error.message);
+      throw error;
+    }
   }
 
   async disconnectDevice(deviceId: string, userId: string, tenantId: string): Promise<{ success: boolean }> {
