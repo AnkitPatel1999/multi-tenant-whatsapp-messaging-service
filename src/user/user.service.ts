@@ -4,29 +4,41 @@ import { Model } from 'mongoose';
 import { User, UserDocument } from '../schema/user.schema';
 import { v4 as uuidv4 } from 'uuid';
 import * as bcrypt from 'bcrypt';
+import { CreateUserDto, CreateUserData } from '../dto/create-user.dto';
+
 
 @Injectable()
 export class UserService {
   private readonly logger = new Logger(UserService.name);
 
-  constructor(@InjectModel(User.name) private userModel: Model<UserDocument>) {}
+  constructor(@InjectModel(User.name) private userModel: Model<User>) {}
 
-  async createUser(createUserDto: any): Promise<UserDocument> {
-    try {
-      const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
-      
-      const user = new this.userModel({
-        userId: uuidv4(),
-        ...createUserDto,
-        password: hashedPassword,
-      });
-
-      return await user.save();
-    } catch (error) {
-      this.logger.error('Error creating user:', error);
-      throw error;
-    }
+  async createUser(createUserDto: CreateUserData): Promise<UserDocument> {
+    const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
+    const user = await new this.userModel({
+      userId: uuidv4(),
+      ...createUserDto,
+      password: hashedPassword
+    });
+    return user.save();
   }
+
+  // async createUser(createUserDto: any): Promise<UserDocument> {
+  //   try {
+  //     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
+      
+  //     const user = new this.userModel({
+  //       userId: uuidv4(),
+  //       ...createUserDto,
+  //       password: hashedPassword,
+  //     });
+
+  //     return await user.save();
+  //   } catch (error) {
+  //     this.logger.error('Error creating user:', error);
+  //     throw error;
+  //   }
+  // }
 
   async findByUsername(username: string): Promise<UserDocument | null> {
     try {

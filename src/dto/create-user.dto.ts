@@ -3,7 +3,6 @@ import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsEmail, IsPhoneNumber, Is
 export class CreateUserDto {
   @IsString()
   @IsNotEmpty()
-  @IsEmail()
   username: string;
 
   @IsString()
@@ -34,4 +33,9 @@ export class CreateUserDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+}
+
+// Interface for internal use in service (includes tenantId)
+export interface CreateUserData extends CreateUserDto {
+  tenantId: string;
 }
