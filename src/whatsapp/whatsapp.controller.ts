@@ -32,7 +32,7 @@ export class WhatsAppController {
       responseData.error = 1;
       responseData.message = 'Error: Failed to retrieve devices!';
       responseData.confidentialErrorMessage = err.message;
-      delete responseData.confidentialErrorMessage;
+      
       return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }
@@ -59,7 +59,7 @@ export class WhatsAppController {
       responseData.error = 1;
       responseData.message = 'Error: Device not created!';
       responseData.confidentialErrorMessage = err.message;
-      delete responseData.confidentialErrorMessage;
+      
       return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }
@@ -86,7 +86,7 @@ export class WhatsAppController {
       responseData.error = 1;
       responseData.message = 'Error: Failed to generate QR code!';
       responseData.confidentialErrorMessage = err.message;
-      delete responseData.confidentialErrorMessage;
+      
       return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }
@@ -124,7 +124,7 @@ export class WhatsAppController {
       responseData.error = 1;
       responseData.message = 'Error: Failed to send message!';
       responseData.confidentialErrorMessage = err.message;
-      delete responseData.confidentialErrorMessage;
+      
       return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }
@@ -151,7 +151,7 @@ export class WhatsAppController {
       responseData.error = 1;
       responseData.message = 'Error: Failed to disconnect device!';
       responseData.confidentialErrorMessage = err.message;
-      delete responseData.confidentialErrorMessage;
+      
       return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }

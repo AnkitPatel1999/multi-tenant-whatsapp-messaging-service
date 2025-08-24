@@ -40,7 +40,6 @@ export class UserController {
       responseData.error = 1;
       responseData.message = 'Error: User not created!';
       responseData.confidentialErrorMessage = err.message;
-      delete responseData.confidentialErrorMessage;
       return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }
@@ -68,7 +67,7 @@ export class UserController {
       responseData.error = 1;
       responseData.message = 'Error: Failed to retrieve users!';
       responseData.confidentialErrorMessage = err.message;
-      delete responseData.confidentialErrorMessage;
+      
       return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }
@@ -101,7 +100,7 @@ export class UserController {
       responseData.error = 1;
       responseData.message = 'Error: Failed to retrieve user!';
       responseData.confidentialErrorMessage = err.message;
-      delete responseData.confidentialErrorMessage;
+      
       return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }
@@ -134,7 +133,7 @@ export class UserController {
       responseData.error = 1;
       responseData.message = 'Error: Failed to assign user to group!';
       responseData.confidentialErrorMessage = err.message;
-      delete responseData.confidentialErrorMessage;
+      
       return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }
@@ -162,7 +161,7 @@ export class UserController {
       responseData.error = 1;
       responseData.message = 'Error: Failed to delete user!';
       responseData.confidentialErrorMessage = err.message;
-      delete responseData.confidentialErrorMessage;
+      
       return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }

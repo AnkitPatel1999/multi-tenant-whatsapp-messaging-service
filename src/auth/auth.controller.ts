@@ -30,7 +30,7 @@ export class AuthController {
       responseData.error = 1;
       responseData.message = 'Error: Login failed!';
       responseData.confidentialErrorMessage = err.message;
-      delete responseData.confidentialErrorMessage;
+      
       return response.status(HttpStatus.UNAUTHORIZED).json(responseData);
     }
   }

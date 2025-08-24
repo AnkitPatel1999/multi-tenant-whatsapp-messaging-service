@@ -32,7 +32,7 @@ export class ChatGroupController {
       responseData.error = 1;
       responseData.message = 'Error: Failed to retrieve groups!';
       responseData.confidentialErrorMessage = err.message;
-      delete responseData.confidentialErrorMessage;
+      
       return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }
@@ -64,7 +64,7 @@ export class ChatGroupController {
       responseData.error = 1;
       responseData.message = 'Error: Group not created!';
       responseData.confidentialErrorMessage = err.message;
-      delete responseData.confidentialErrorMessage;
+      
       return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }

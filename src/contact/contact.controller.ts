@@ -32,7 +32,7 @@ export class ContactController {
       responseData.error = 1;
       responseData.message = 'Error: Failed to retrieve contacts!';
       responseData.confidentialErrorMessage = err.message;
-      delete responseData.confidentialErrorMessage;
+      
       return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }
@@ -64,7 +64,7 @@ export class ContactController {
       responseData.error = 1;
       responseData.message = 'Error: Contact not created!';
       responseData.confidentialErrorMessage = err.message;
-      delete responseData.confidentialErrorMessage;
+      
       return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }
