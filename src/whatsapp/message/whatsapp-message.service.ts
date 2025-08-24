@@ -16,6 +16,16 @@ export class WhatsAppMessageService {
    * Store a WhatsApp message in the database
    */
   async storeMessage(messageData: Partial<WhatsAppMessage>): Promise<WhatsAppMessageDocument> {
+    console.log('🔄 [DB STORE] Attempting to store WhatsApp message:', {
+      messageId: messageData.messageId,
+      deviceId: messageData.deviceId,
+      direction: messageData.direction,
+      messageType: messageData.messageType,
+      textContent: messageData.textContent?.substring(0, 50) + '...',
+      chatId: messageData.chatId,
+      timestamp: messageData.timestamp
+    });
+
     try {
       // Check if message already exists to avoid duplicates
       const existingMessage = await this.messageModel.findOne({
@@ -24,6 +34,10 @@ export class WhatsAppMessageService {
       }).exec();
 
       if (existingMessage) {
+        console.log('⚠️ [DB STORE] Message already exists, skipping:', {
+          messageId: messageData.messageId,
+          deviceId: messageData.deviceId
+        });
         this.logger.debug(`Message ${messageData.messageId} already exists, skipping storage`);
         return existingMessage;
       }
@@ -31,9 +45,25 @@ export class WhatsAppMessageService {
       const message = new this.messageModel(messageData);
       const savedMessage = await message.save();
       
+      console.log('✅ [DB STORE] SUCCESS - Message stored in database:', {
+        messageId: messageData.messageId,
+        deviceId: messageData.deviceId,
+        direction: messageData.direction,
+        messageType: messageData.messageType,
+        chatId: messageData.chatId,
+        storedAt: new Date().toISOString(),
+        dbId: savedMessage._id
+      });
+      
       this.logger.debug(`Stored message ${messageData.messageId} for device ${messageData.deviceId}`);
       return savedMessage;
     } catch (error) {
+      console.error('❌ [DB STORE] FAILED - Error storing message in database:', {
+        messageId: messageData.messageId,
+        deviceId: messageData.deviceId,
+        error: error.message,
+        stack: error.stack
+      });
       this.logger.error(`Error storing message ${messageData.messageId}:`, error.message);
       throw error;
     }
@@ -232,11 +262,26 @@ export class WhatsAppMessageService {
     baileysMessage: any,
     direction: 'incoming' | 'outgoing'
   ): Partial<WhatsAppMessage> | null {
+    console.log('🔄 [PARSE] Attempting to parse WhatsApp message:', {
+      deviceId,
+      direction,
+      messageId: baileysMessage.key?.id,
+      remoteJid: baileysMessage.key?.remoteJid,
+      fromMe: baileysMessage.key?.fromMe,
+      timestamp: baileysMessage.messageTimestamp,
+      messageTypes: Object.keys(baileysMessage.message || {})
+    });
+
     try {
       const messageKey = baileysMessage.key;
       const messageContent = baileysMessage.message;
       
       if (!messageKey || !messageContent) {
+        console.log('❌ [PARSE] FAILED - Missing message key or content:', {
+          hasKey: !!messageKey,
+          hasContent: !!messageContent,
+          messageId: messageKey?.id
+        });
         return null;
       }
 
@@ -330,8 +375,26 @@ export class WhatsAppMessageService {
         parsedMessage.toJid = messageKey.remoteJid;
       }
 
+      console.log('✅ [PARSE] SUCCESS - Message parsed successfully:', {
+        messageId: parsedMessage.messageId,
+        deviceId: parsedMessage.deviceId,
+        direction: parsedMessage.direction,
+        messageType: parsedMessage.messageType,
+        chatId: parsedMessage.chatId,
+        fromJid: parsedMessage.fromJid,
+        textContent: parsedMessage.textContent?.substring(0, 100) + '...',
+        hasMedia: !!(parsedMessage.mediaType || parsedMessage.fileName),
+        timestamp: parsedMessage.timestamp
+      });
+
       return parsedMessage;
     } catch (error) {
+      console.error('❌ [PARSE] FAILED - Error parsing message:', {
+        deviceId,
+        messageId: baileysMessage.key?.id,
+        error: error.message,
+        stack: error.stack
+      });
       this.logger.error(`Error parsing message:`, error.message);
       return null;
     }

@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Body, Param, UseGuards, Request, Res, Req, HttpStatus, Delete, Query } from '@nestjs/common';
 import { WhatsAppService } from './whatsapp.service';
 import { WhatsAppMessageService } from './message/whatsapp-message.service';
+import { BaileysService } from './baileys.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { TenantScope } from '../auth/decorators/tenant-scope.decorator';
 import { TenantScopeGuard } from '../auth/guards/tenant-scope.guard';
@@ -22,6 +23,7 @@ export class WhatsAppController {
   constructor(
     private whatsappService: WhatsAppService,
     private whatsappMessageService: WhatsAppMessageService,
+    private baileysService: BaileysService,
   ) {}
 
   @Get('devices')
@@ -655,6 +657,127 @@ export class WhatsAppController {
     } catch (err) {
       responseData.error = 1;
       responseData.message = 'Error: Failed to delete message!';
+      responseData.confidentialErrorMessage = err.message;
+      
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
+    }
+  }
+
+  @Post('devices/:deviceId/sync/contacts/manual')
+  @RequirePermissions(PERMISSIONS.MANAGE_DEVICES)
+  async manualContactSync(
+    @Req() request, 
+    @Res() response, 
+    @Param('deviceId') deviceId: string
+  ) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string;
+    } = {
+      message: '',
+      data: {},
+      error: 0,
+    };
+
+    try {
+      const result = await this.baileysService.manualContactSync(deviceId);
+
+      responseData.message = result.message;
+      responseData.data = {
+        deviceId,
+        synced: result.synced,
+        success: result.success
+      };
+      
+      const status = result.success ? HttpStatus.OK : HttpStatus.BAD_REQUEST;
+      return response.status(status).json(responseData);
+    } catch (err) {
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to trigger manual contact sync!';
+      responseData.confidentialErrorMessage = err.message;
+      
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
+    }
+  }
+
+  @Post('devices/:deviceId/session/reset')
+  @RequirePermissions(PERMISSIONS.MANAGE_DEVICES)
+  async resetCorruptedSession(
+    @Req() request, 
+    @Res() response, 
+    @Param('deviceId') deviceId: string
+  ) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string;
+    } = {
+      message: '',
+      data: {},
+      error: 0,
+    };
+
+    try {
+      const result = await this.baileysService.forceResetCorruptedSession(deviceId);
+
+      responseData.message = result.message;
+      responseData.data = {
+        deviceId,
+        success: result.success,
+        requiresReauth: result.success
+      };
+      
+      const status = result.success ? HttpStatus.OK : HttpStatus.BAD_REQUEST;
+      return response.status(status).json(responseData);
+    } catch (err) {
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to reset session!';
+      responseData.confidentialErrorMessage = err.message;
+      
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
+    }
+  }
+
+  @Get('devices/:deviceId/diagnostics')
+  @RequirePermissions(PERMISSIONS.VIEW_LOGS)
+  async getDiagnostics(
+    @Req() request, 
+    @Res() response, 
+    @Param('deviceId') deviceId: string
+  ) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string;
+    } = {
+      message: '',
+      data: {},
+      error: 0,
+    };
+
+    try {
+      const connectionStatus = await this.baileysService.getConnectionStatus(deviceId);
+      const retryStatus = this.baileysService.getDeviceRetryStatus(deviceId);
+      const allConnected = this.baileysService.getAllConnectedDevices();
+
+      responseData.message = 'Device diagnostics retrieved successfully';
+      responseData.data = {
+        deviceId,
+        connection: connectionStatus,
+        retryInfo: retryStatus,
+        isInConnectedList: allConnected.includes(deviceId),
+        totalConnectedDevices: allConnected.length,
+        timestamp: new Date().toISOString()
+      };
+      
+      return response.status(HttpStatus.OK).json(responseData);
+    } catch (err) {
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to get device diagnostics!';
       responseData.confidentialErrorMessage = err.message;
       
       return response.status(HttpStatus.BAD_REQUEST).json(responseData);

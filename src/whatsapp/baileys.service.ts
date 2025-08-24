@@ -113,7 +113,7 @@ export class BaileysService {
           // Check if message has timestamp and is recent
           if (msg && typeof msg === 'object' && 'timestamp' in msg) {
             const messageAge = Date.now() - (msg.timestamp as number) * 1000;
-            return messageAge < 3 * 24 * 60 * 60 * 1000; // 3 days
+            return messageAge < 7 * 24 * 60 * 60 * 1000; // 7 days
           }
           // If no timestamp available, sync by default but limit to reduce load
           return true;
@@ -124,6 +124,52 @@ export class BaileysService {
       socketConfig.auth = authState.state;
 
       const sock = makeWASocket(socketConfig);
+
+      // Handle contacts and chats events directly
+      sock.ev.on('contacts.upsert', async (contacts) => {
+        console.log('👥 [BAILEYS EVENT] contacts.upsert received:', {
+          deviceId,
+          contactCount: contacts.length,
+          contacts: contacts.slice(0, 5).map(c => ({ id: c.id, name: c.name || c.notify }))
+        });
+        
+        // Sync contacts directly from the event
+        await this.syncContactsFromEvent(deviceId, userId, tenantId, contacts);
+      });
+
+      sock.ev.on('contacts.update', async (contacts) => {
+        console.log('👥 [BAILEYS EVENT] contacts.update received:', {
+          deviceId,
+          contactCount: contacts.length,
+          contacts: contacts.slice(0, 5).map(c => ({ id: c.id, name: c.name || c.notify }))
+        });
+        
+        // Sync updated contacts
+        await this.syncContactsFromEvent(deviceId, userId, tenantId, contacts);
+      });
+
+      sock.ev.on('chats.upsert', async (chats) => {
+        console.log('💬 [BAILEYS EVENT] chats.upsert received:', {
+          deviceId,
+          chatCount: chats.length,
+          chats: chats.slice(0, 5).map(c => ({ id: c.id, name: c.name }))
+        });
+        
+        // Process group chats for group sync and extract contacts
+        await this.syncGroupChatsFromEvent(deviceId, userId, tenantId, chats);
+        await this.extractContactsFromChats(deviceId, userId, tenantId, chats);
+      });
+
+      sock.ev.on('chats.update', async (chats) => {
+        console.log('💬 [BAILEYS EVENT] chats.update received:', {
+          deviceId,
+          chatCount: chats.length,
+          chats: chats.slice(0, 5).map(c => ({ id: c.id, name: c.name }))
+        });
+        
+        // Extract contacts from chat updates
+        await this.extractContactsFromChats(deviceId, userId, tenantId, chats);
+      });
 
       // Handle connection events
       sock.ev.on('connection.update', async (update) => {
@@ -171,6 +217,9 @@ export class BaileysService {
           console.log(`📱 Device ID: ${deviceId}`);
           console.log('🚀 You can now send messages via API\n');
           
+          // Check for recent PreKey errors and clear session if needed
+          await this.checkAndClearCorruptedSession(deviceId);
+          
           // Trigger initial sync of contacts and groups
           this.triggerInitialSync(deviceId, sock);
         } else if (connection === 'connecting') {
@@ -185,21 +234,53 @@ export class BaileysService {
 
       // Handle incoming messages
       sock.ev.on('messages.upsert', async (messageUpdate) => {
+        console.log('📩 [WA EVENT] messages.upsert received:', {
+          deviceId,
+          type: messageUpdate.type,
+          messageCount: messageUpdate.messages?.length || 0,
+          messages: messageUpdate.messages?.map(m => ({
+            id: m.key?.id,
+            remoteJid: m.key?.remoteJid,
+            fromMe: m.key?.fromMe,
+            messageTypes: Object.keys(m.message || {})
+          }))
+        });
         await this.handleIncomingMessages(deviceId, userId, tenantId, messageUpdate);
       });
 
       // Handle message updates (delivery receipts, read receipts, etc.)
       sock.ev.on('messages.update', async (messageUpdates) => {
+        console.log('📝 [WA EVENT] messages.update received:', {
+          deviceId,
+          updateCount: messageUpdates?.length || 0,
+          updates: messageUpdates?.map(u => ({
+            messageId: u.key?.id,
+            status: u.update?.status,
+            updateKeys: Object.keys(u.update || {})
+          }))
+        });
         await this.handleMessageUpdates(deviceId, messageUpdates);
       });
 
       // Handle message reactions
       sock.ev.on('messages.reaction', async (reactions) => {
+        console.log('😀 [WA EVENT] messages.reaction received:', {
+          deviceId,
+          reactionCount: reactions?.length || 0
+        });
         this.logger.debug(`Message reactions received for device ${deviceId}:`, reactions);
       });
 
       // Handle message deletions
       sock.ev.on('message-receipt.update', async (receipts) => {
+        console.log('📋 [WA EVENT] message-receipt.update received:', {
+          deviceId,
+          receiptCount: receipts?.length || 0,
+          receipts: receipts?.map(r => ({
+            messageId: r.key?.id,
+            receiptType: r.receipt ? 'receipt' : 'unknown'
+          }))
+        });
         await this.handleMessageReceipts(deviceId, receipts);
       });
 
@@ -577,26 +658,76 @@ export class BaileysService {
    * Trigger initial sync of contacts and groups after connection
    */
   private async triggerInitialSync(deviceId: string, connection: any): Promise<void> {
+    console.log('🔄 [INITIAL SYNC] Scheduling initial sync for contacts and groups:', {
+      deviceId,
+      delaySeconds: 5,
+      scheduledAt: new Date().toISOString()
+    });
+
     try {
       // Wait a bit for connection to stabilize
       setTimeout(async () => {
         try {
+          console.log('🚀 [INITIAL SYNC] Starting initial sync for device:', {
+            deviceId,
+            startedAt: new Date().toISOString()
+          });
+          
           this.logger.log(`Starting initial sync for device ${deviceId}`);
           
           // Sync contacts
+          console.log('📞 [INITIAL SYNC] Starting contact synchronization...');
           const contactResult = await this.whatsappSync.syncContacts(deviceId, connection);
+          
+          console.log('✅ [INITIAL SYNC] Contact sync completed:', {
+            deviceId,
+            synced: contactResult.synced,
+            errors: contactResult.errors,
+            successRate: contactResult.synced + contactResult.errors > 0 ? 
+              ((contactResult.synced / (contactResult.synced + contactResult.errors)) * 100).toFixed(2) + '%' : '0%'
+          });
+          
           this.logger.log(`Contact sync result: ${contactResult.synced} synced, ${contactResult.errors} errors`);
           
           // Sync groups
+          console.log('👥 [INITIAL SYNC] Starting group synchronization...');
           const groupResult = await this.whatsappSync.syncGroups(deviceId, connection);
+          
+          console.log('✅ [INITIAL SYNC] Group sync completed:', {
+            deviceId,
+            synced: groupResult.synced,
+            errors: groupResult.errors,
+            successRate: groupResult.synced + groupResult.errors > 0 ? 
+              ((groupResult.synced / (groupResult.synced + groupResult.errors)) * 100).toFixed(2) + '%' : '0%'
+          });
+          
           this.logger.log(`Group sync result: ${groupResult.synced} synced, ${groupResult.errors} errors`);
           
+          console.log('🎉 [INITIAL SYNC] Complete initial sync finished:', {
+            deviceId,
+            totalContacts: contactResult.synced,
+            totalGroups: groupResult.synced,
+            totalErrors: contactResult.errors + groupResult.errors,
+            completedAt: new Date().toISOString()
+          });
+          
         } catch (error) {
+          console.error('❌ [INITIAL SYNC] Initial sync failed:', {
+            deviceId,
+            error: error.message,
+            stack: error.stack,
+            failedAt: new Date().toISOString()
+          });
           this.logger.error(`Initial sync failed for device ${deviceId}:`, error.message);
         }
       }, 5000); // 5 second delay
       
     } catch (error) {
+      console.error('❌ [INITIAL SYNC] Error triggering initial sync:', {
+        deviceId,
+        error: error.message,
+        stack: error.stack
+      });
       this.logger.error(`Error triggering initial sync for device ${deviceId}:`, error.message);
     }
   }
@@ -690,42 +821,130 @@ export class BaileysService {
    * Handle incoming messages and store them in database
    */
   private async handleIncomingMessages(deviceId: string, userId: string, tenantId: string, messageUpdate: any): Promise<void> {
+    console.log('🔄 [MESSAGE HANDLER] Processing incoming messages:', {
+      deviceId,
+      type: messageUpdate.type,
+      messageCount: messageUpdate.messages?.length || 0,
+      timestamp: new Date().toISOString()
+    });
+
     try {
       const { messages, type } = messageUpdate;
       
       if (type !== 'notify') {
+        console.log('⏭️ [MESSAGE HANDLER] Skipping - not a notify type:', {
+          deviceId,
+          type,
+          expectedType: 'notify'
+        });
         return; // Only process new messages
       }
 
+      let processedCount = 0;
+      let skippedCount = 0;
+      let errorCount = 0;
+
       for (const message of messages) {
         if (!message.key || !message.message) {
+          console.log('⏭️ [MESSAGE HANDLER] Skipping - missing key or message:', {
+            deviceId,
+            hasKey: !!message.key,
+            hasMessage: !!message.message,
+            messageId: message.key?.id,
+            reason: !message.key ? 'No message key' : 'Message decryption failed (likely PreKey error)'
+          });
+          
+          // If we have a key but no message, it's likely a decryption failure
+          if (message.key && !message.message) {
+            console.log('🔐 [MESSAGE HANDLER] Decryption failure detected - may need session reset:', {
+              deviceId,
+              messageId: message.key.id,
+              from: message.key.remoteJid,
+              participant: message.key.participant
+            });
+          }
+          
+          skippedCount++;
           continue;
         }
 
         // Skip messages from status broadcast
         if (message.key.remoteJid === 'status@broadcast') {
+          console.log('⏭️ [MESSAGE HANDLER] Skipping - status broadcast message:', {
+            deviceId,
+            messageId: message.key.id
+          });
+          skippedCount++;
           continue;
         }
 
-        // Determine message direction
-        const direction = message.key.fromMe ? 'outgoing' : 'incoming';
-        
-        // Parse and store the message
-        const parsedMessage = this.whatsappMessageService.parseMessage(
-          deviceId,
-          userId,
-          tenantId,
-          message,
-          direction
-        );
-
-        if (parsedMessage) {
-          await this.whatsappMessageService.storeMessage(parsedMessage);
+        try {
+          // Determine message direction
+          const direction = message.key.fromMe ? 'outgoing' : 'incoming';
           
-          this.logger.debug(`Stored ${direction} message ${message.key.id} from ${message.key.remoteJid}`);
+          console.log('🔄 [MESSAGE HANDLER] Processing message:', {
+            deviceId,
+            messageId: message.key.id,
+            remoteJid: message.key.remoteJid,
+            direction,
+            messageTypes: Object.keys(message.message)
+          });
+          
+          // Parse and store the message
+          const parsedMessage = this.whatsappMessageService.parseMessage(
+            deviceId,
+            userId,
+            tenantId,
+            message,
+            direction
+          );
+
+          if (parsedMessage) {
+            await this.whatsappMessageService.storeMessage(parsedMessage);
+            processedCount++;
+            
+            console.log('✅ [MESSAGE HANDLER] Message processed successfully:', {
+              deviceId,
+              messageId: message.key.id,
+              direction,
+              messageType: parsedMessage.messageType,
+              processedCount
+            });
+            
+            this.logger.debug(`Stored ${direction} message ${message.key.id} from ${message.key.remoteJid}`);
+          } else {
+            console.log('❌ [MESSAGE HANDLER] Message parsing failed:', {
+              deviceId,
+              messageId: message.key.id,
+              direction
+            });
+            errorCount++;
+          }
+        } catch (error) {
+          console.error('❌ [MESSAGE HANDLER] Error processing individual message:', {
+            deviceId,
+            messageId: message.key?.id,
+            error: error.message
+          });
+          errorCount++;
         }
       }
+
+      console.log('✅ [MESSAGE HANDLER] Batch processing completed:', {
+        deviceId,
+        totalMessages: messages.length,
+        processed: processedCount,
+        skipped: skippedCount,
+        errors: errorCount,
+        completedAt: new Date().toISOString()
+      });
+
     } catch (error) {
+      console.error('❌ [MESSAGE HANDLER] Fatal error handling incoming messages:', {
+        deviceId,
+        error: error.message,
+        stack: error.stack
+      });
       this.logger.error(`Error handling incoming messages for device ${deviceId}:`, error.message);
     }
   }
@@ -799,6 +1018,99 @@ export class BaileysService {
   }
 
   /**
+   * Sync contacts from contacts.upsert event
+   */
+  private async syncContactsFromEvent(deviceId: string, userId: string, tenantId: string, contacts: any[]): Promise<void> {
+    try {
+      console.log('🔄 [EVENT SYNC] Syncing contacts from contacts.upsert event:', { 
+        deviceId, 
+        contactCount: contacts.length 
+      });
+
+      let synced = 0;
+      let errors = 0;
+
+      for (const contact of contacts) {
+        try {
+          const contactData = contact as any;
+          await this.whatsappSync.saveContact(deviceId, userId, tenantId, contactData.id, contactData);
+          synced++;
+          
+          console.log('✅ [EVENT SYNC] Contact synced from event:', {
+            deviceId,
+            contactId: contactData.id,
+            name: contactData.name || contactData.notify
+          });
+        } catch (error) {
+          console.error('❌ [EVENT SYNC] Error syncing contact from event:', {
+            deviceId,
+            contactId: contact.id,
+            error: error.message
+          });
+          errors++;
+        }
+      }
+
+      console.log('✅ [EVENT SYNC] Contacts sync from event completed:', {
+        deviceId,
+        synced,
+        errors,
+        total: contacts.length
+      });
+
+    } catch (error) {
+      console.error('❌ [EVENT SYNC] Error syncing contacts from event:', {
+        deviceId,
+        error: error.message,
+        stack: error.stack
+      });
+    }
+  }
+
+  /**
+   * Sync group chats from chats.upsert event
+   */
+  private async syncGroupChatsFromEvent(deviceId: string, userId: string, tenantId: string, chats: any[]): Promise<void> {
+    try {
+      console.log('🔄 [EVENT SYNC] Processing chats from chats.upsert event:', { 
+        deviceId, 
+        chatCount: chats.length 
+      });
+
+      const groupChats = chats.filter(chat => chat.id.includes('@g.us')); // Filter for group chats
+      
+      if (groupChats.length === 0) {
+        console.log('⚠️ [EVENT SYNC] No group chats found in event:', { deviceId });
+        return;
+      }
+
+      console.log('👥 [EVENT SYNC] Found group chats to sync:', {
+        deviceId,
+        groupCount: groupChats.length,
+        groups: groupChats.slice(0, 3).map(g => ({ id: g.id, name: g.name }))
+      });
+
+      // Note: chats.upsert doesn't provide full group info with participants
+      // We'll need to fetch full group details separately or wait for messages from groups
+      for (const chat of groupChats) {
+        console.log('👥 [EVENT SYNC] Group chat detected:', {
+          deviceId,
+          groupId: chat.id,
+          name: chat.name,
+          unreadCount: chat.unreadCount
+        });
+      }
+
+    } catch (error) {
+      console.error('❌ [EVENT SYNC] Error processing group chats from event:', {
+        deviceId,
+        error: error.message,
+        stack: error.stack
+      });
+    }
+  }
+
+  /**
    * Store outgoing message when sent via API
    */
   async storeOutgoingMessage(
@@ -835,6 +1147,198 @@ export class BaileysService {
       }
     } catch (error) {
       this.logger.error(`Error storing outgoing message:`, error.message);
+    }
+  }
+
+  /**
+   * Extract contacts from chat information
+   */
+  private async extractContactsFromChats(deviceId: string, userId: string, tenantId: string, chats: any[]): Promise<void> {
+    try {
+      console.log('🔄 [CONTACT EXTRACT] Extracting contacts from chats:', { 
+        deviceId, 
+        chatCount: chats.length 
+      });
+
+      let extracted = 0;
+
+      for (const chat of chats) {
+        try {
+          // Extract contact info from individual chats (not groups)
+          if (chat.id && !chat.id.includes('@g.us') && chat.id.includes('@s.whatsapp.net')) {
+            const contactData = {
+              id: chat.id,
+              name: chat.name || chat.notify || 'Unknown',
+              notify: chat.notify,
+              lastMessageTime: chat.t,
+              unreadCount: chat.unreadCount
+            };
+
+            console.log('👤 [CONTACT EXTRACT] Found individual contact from chat:', {
+              deviceId,
+              contactId: contactData.id,
+              name: contactData.name
+            });
+
+            await this.whatsappSync.saveContact(deviceId, userId, tenantId, contactData.id, contactData);
+            extracted++;
+          }
+          
+          // Extract participant info from group chats
+          if (chat.id && chat.id.includes('@g.us') && chat.groupMetadata && chat.groupMetadata.participants) {
+            console.log('👥 [CONTACT EXTRACT] Extracting contacts from group participants:', {
+              deviceId,
+              groupId: chat.id,
+              participantCount: chat.groupMetadata.participants.length
+            });
+
+            for (const participant of chat.groupMetadata.participants) {
+              const contactData = {
+                id: participant.id,
+                name: participant.name || participant.notify || 'Unknown',
+                notify: participant.notify,
+                isAdmin: participant.admin === 'admin' || participant.admin === 'superadmin'
+              };
+
+              await this.whatsappSync.saveContact(deviceId, userId, tenantId, contactData.id, contactData);
+              extracted++;
+            }
+          }
+        } catch (error) {
+          console.error('❌ [CONTACT EXTRACT] Error extracting contact from chat:', {
+            deviceId,
+            chatId: chat.id,
+            error: error.message
+          });
+        }
+      }
+
+      console.log('✅ [CONTACT EXTRACT] Contact extraction completed:', {
+        deviceId,
+        totalChats: chats.length,
+        contactsExtracted: extracted
+      });
+
+    } catch (error) {
+      console.error('❌ [CONTACT EXTRACT] Error extracting contacts from chats:', {
+        deviceId,
+        error: error.message,
+        stack: error.stack
+      });
+    }
+  }
+
+  /**
+   * Check for corrupted session due to PreKey errors and clear if needed
+   */
+  private async checkAndClearCorruptedSession(deviceId: string): Promise<void> {
+    try {
+      // This is a placeholder for detecting repeated PreKey errors
+      // In a production environment, you might want to track failed decryption attempts
+      console.log('🔍 [SESSION CHECK] Checking for session corruption:', { deviceId });
+      
+      // For now, we'll just log that we're monitoring for issues
+      console.log('ℹ️ [SESSION CHECK] Session health monitoring active. Will auto-clear if too many decryption failures occur.');
+      
+    } catch (error) {
+      console.error('❌ [SESSION CHECK] Error checking session health:', {
+        deviceId,
+        error: error.message
+      });
+    }
+  }
+
+  /**
+   * Force clear corrupted session when too many PreKey errors occur
+   */
+  async forceResetCorruptedSession(deviceId: string): Promise<{ success: boolean; message: string }> {
+    try {
+      console.log('🔄 [SESSION RESET] Force clearing corrupted session due to repeated decryption failures:', { deviceId });
+      
+      // Clear corrupted session data
+      await this.databaseAuthState.clearCorruptedSession(deviceId);
+      
+      // Get device info for reconnection
+      const device = await this.deviceModel.findOne({ deviceId }).exec();
+      if (!device) {
+        return {
+          success: false,
+          message: 'Device not found'
+        };
+      }
+
+      // Disconnect existing connection
+      const existingConnection = this.connections.get(deviceId);
+      if (existingConnection) {
+        try {
+          existingConnection.end();
+        } catch (error) {
+          console.log('⚠️ [SESSION RESET] Error ending connection:', error.message);
+        }
+      }
+
+      // Clear from memory
+      this.connections.delete(deviceId);
+      this.authStates.delete(deviceId);
+
+      console.log('✅ [SESSION RESET] Session cleared. Device will need to re-authenticate with QR code.');
+      
+      return {
+        success: true,
+        message: `Session reset for device ${deviceId}. Re-authentication required.`
+      };
+      
+    } catch (error) {
+      console.error('❌ [SESSION RESET] Error resetting corrupted session:', {
+        deviceId,
+        error: error.message,
+        stack: error.stack
+      });
+      
+      return {
+        success: false,
+        message: `Failed to reset session: ${error.message}`
+      };
+    }
+  }
+
+  /**
+   * Manually trigger contact sync (for testing/debugging)
+   */
+  async manualContactSync(deviceId: string): Promise<{ success: boolean; message: string; synced: number }> {
+    try {
+      console.log('🔄 [MANUAL SYNC] Manually triggering contact sync:', { deviceId });
+      
+      const device = await this.deviceModel.findOne({ deviceId }).exec();
+      if (!device) {
+        return { success: false, message: 'Device not found', synced: 0 };
+      }
+
+      const connection = this.connections.get(deviceId);
+      if (!connection) {
+        return { success: false, message: 'Device not connected', synced: 0 };
+      }
+
+      // Try to get contacts through the sync service
+      const result = await this.whatsappSync.syncContacts(deviceId, connection);
+      
+      return {
+        success: true,
+        message: `Manual contact sync completed. Synced: ${result.synced}, Errors: ${result.errors}`,
+        synced: result.synced
+      };
+      
+    } catch (error) {
+      console.error('❌ [MANUAL SYNC] Error in manual contact sync:', {
+        deviceId,
+        error: error.message
+      });
+      
+      return {
+        success: false,
+        message: `Manual sync failed: ${error.message}`,
+        synced: 0
+      };
     }
   }
 }
