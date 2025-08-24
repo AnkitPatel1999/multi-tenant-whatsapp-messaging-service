@@ -14,7 +14,7 @@ export class WhatsAppMessage {
   @Prop({ required: true, index: true })
   userId: string;
 
-  @Prop({ required: true, index: true })
+  @Prop({ required: true })
   tenantId: string;
 
   @Prop({ required: true, index: true })

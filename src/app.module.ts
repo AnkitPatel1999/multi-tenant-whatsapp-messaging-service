@@ -7,6 +7,11 @@ import configuration from './config/configuration';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Connection } from 'mongoose';
 
+// Scalability Infrastructure
+import { AppCacheModule } from './cache/cache.module';
+import { QueueModule } from './queue/queue.module';
+import { DatabaseModule } from './database/database.module';
+
 // Schemas
 import { TenantSchema } from './schema/tenant.schema';
 import { UserSchema } from './schema/user.schema';
@@ -36,22 +41,8 @@ import { AppThrottlerModule } from './common/throttler/throttler.module';
       load: [configuration],
     }),
 
-    MongooseModule.forRootAsync({
-      imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
-        // process.env.MONGODB_URI || configService.get('database.url') ||
-        uri:  'mongodb://localhost:27018/whatsapp-system1',
-        onConnectionCreate: (connection: Connection) => {
-          connection.on('connected', () => console.log('MongoDB connected'));
-          connection.on('open', () => console.log('MongoDB open'));
-          connection.on('disconnected', () => console.log('MongoDB disconnected'));
-          connection.on('reconnected', () => console.log('MongoDB reconnected'));
-          connection.on('disconnecting', () => console.log('MongoDB disconnecting'));
-          return connection;
-        }
-      }),
-      inject: [ConfigService],
-    }),
+    // Replace with optimized database configuration
+    DatabaseModule,
 
     MongooseModule.forFeature([
       { name: 'Tenant', schema: TenantSchema },
@@ -67,6 +58,11 @@ import { AppThrottlerModule } from './common/throttler/throttler.module';
       { name: 'ChatGroup', schema: ChatGroupSchema },
     ]),
 
+    // Scalability Infrastructure
+    AppCacheModule,
+    QueueModule,
+    
+    // Application Modules
     AppThrottlerModule,
     AuthModule,
     UserModule,

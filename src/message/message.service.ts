@@ -34,4 +34,24 @@ export class MessageService {
 
     return await messageLog.save();
   }
+
+  async findById(messageId: string): Promise<MessageLogDocument | null> {
+    return await this.messageLogModel.findOne({ messageId }).exec();
+  }
+
+  async updateMessageStatus(messageId: string, status: string): Promise<MessageLogDocument | null> {
+    return await this.messageLogModel.findOneAndUpdate(
+      { messageId },
+      { status },
+      { new: true }
+    ).exec();
+  }
+
+  async deleteOldMessages(cutoffDate: Date): Promise<number> {
+    const result = await this.messageLogModel.deleteMany({
+      timestamp: { $lt: cutoffDate }
+    }).exec();
+    
+    return result.deletedCount || 0;
+  }
 }

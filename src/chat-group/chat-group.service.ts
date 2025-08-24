@@ -27,4 +27,15 @@ export class ChatGroupService {
 
     return await group.save();
   }
+
+  async getGroupsForCache(deviceId: string, userId: string, tenantId: string): Promise<any[]> {
+    // This method should return groups in a format suitable for caching
+    const groups = await this.getGroups(tenantId, userId);
+    return groups.map(group => ({
+      groupId: group.groupId,
+      groupName: group.groupName,
+      description: group.description,
+      isActive: group.isActive,
+    }));
+  }
 }

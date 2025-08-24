@@ -4,6 +4,8 @@ import { Model } from 'mongoose';
 import { WhatsAppDevice, WhatsAppDeviceDocument } from '../schema/whatsapp-device.schema';
 import { BaileysService } from './baileys.service';
 import { WhatsAppSyncService } from './sync/whatsapp-sync.service';
+import { MessageQueueService } from '../queue/services/message-queue.service';
+import { CacheService } from '../cache/cache.service';
 import { v4 as uuidv4 } from 'uuid';
 import { 
   CreateDeviceData, 
@@ -21,6 +23,8 @@ export class WhatsAppService {
     @InjectModel(WhatsAppDevice.name) private deviceModel: Model<WhatsAppDeviceDocument>,
     private baileysService: BaileysService,
     private whatsappSync: WhatsAppSyncService,
+    private messageQueueService: MessageQueueService,
+    private cacheService: CacheService,
   ) {}
 
   async createDevice(createDeviceData: CreateDeviceData): Promise<WhatsAppDeviceDocument> {
@@ -112,25 +116,45 @@ export class WhatsAppService {
   }
 
   async sendMessage(sendMessageData: SendMessageData): Promise<WhatsAppMessageResult> {
-    const device = await this.deviceModel.findOne({ 
-      deviceId: sendMessageData.deviceId, 
-      userId: sendMessageData.userId, 
-      tenantId: sendMessageData.tenantId 
-    }).exec();
+    // Use cached device lookup first
+    const deviceCacheKey = `device:${sendMessageData.deviceId}:${sendMessageData.userId}:${sendMessageData.tenantId}`;
+    let device = await this.cacheService.get(deviceCacheKey);
+    
+    if (!device) {
+      device = await this.deviceModel.findOne({ 
+        deviceId: sendMessageData.deviceId, 
+        userId: sendMessageData.userId, 
+        tenantId: sendMessageData.tenantId 
+      }).exec();
+      
+      if (device) {
+        await this.cacheService.set(deviceCacheKey, device, 300); // Cache for 5 minutes
+      }
+    }
     
     if (!device) {
       throw new NotFoundException('Device not found');
     }
 
-    // Check actual connection status from BaileysService instead of database
-    try {
-      const connectionStatus = await this.baileysService.getConnectionStatus(sendMessageData.deviceId);
-      if (!connectionStatus.isConnected) {
+    // Check cached connection status first
+    const cachedStatus = await this.cacheService.get<{ isConnected: boolean }>(`device_status:${sendMessageData.deviceId}`);
+    if (cachedStatus && !cachedStatus.isConnected) {
+      throw new NotFoundException('Device not connected to WhatsApp. Please connect the device first.');
+    }
+
+    // Check actual connection status if not cached
+    if (!cachedStatus) {
+      try {
+        const connectionStatus = await this.baileysService.getConnectionStatus(sendMessageData.deviceId);
+        await this.cacheService.set(`device_status:${sendMessageData.deviceId}`, connectionStatus, 300); // 5 minutes TTL
+        
+        if (!connectionStatus.isConnected) {
+          throw new NotFoundException('Device not connected to WhatsApp. Please connect the device first.');
+        }
+      } catch (error) {
+        this.logger.error(`Error checking connection status for device ${sendMessageData.deviceId}:`, error.message);
         throw new NotFoundException('Device not connected to WhatsApp. Please connect the device first.');
       }
-    } catch (error) {
-      this.logger.error(`Error checking connection status for device ${sendMessageData.deviceId}:`, error.message);
-      throw new NotFoundException('Device not connected to WhatsApp. Please connect the device first.');
     }
 
     // Retry mechanism for message sending
@@ -179,6 +203,101 @@ export class WhatsAppService {
     // All retries failed
     this.logger.error(`All ${maxRetries} attempts failed for device ${sendMessageData.deviceId}. Last error: ${lastError.message}`);
     throw lastError;
+  }
+
+  /**
+   * Queue message for async processing (recommended for high throughput)
+   */
+  async queueMessage(sendMessageData: SendMessageData & { priority?: 'low' | 'normal' | 'high' | 'critical' }): Promise<{ jobId: string; queued: boolean }> {
+    try {
+      // Validate device exists and is connected (cached lookup)
+      const deviceCacheKey = `device:${sendMessageData.deviceId}:${sendMessageData.userId}:${sendMessageData.tenantId}`;
+      let device = await this.cacheService.get(deviceCacheKey);
+      
+      if (!device) {
+        device = await this.deviceModel.findOne({ 
+          deviceId: sendMessageData.deviceId, 
+          userId: sendMessageData.userId, 
+          tenantId: sendMessageData.tenantId 
+        }).exec();
+        
+        if (device) {
+          await this.cacheService.set(deviceCacheKey, device, 300);
+        }
+      }
+      
+      if (!device) {
+        throw new NotFoundException('Device not found');
+      }
+
+      // Queue the message for async processing
+      const jobId = await this.messageQueueService.queueMessage({
+        deviceId: sendMessageData.deviceId,
+        userId: sendMessageData.userId,
+        tenantId: sendMessageData.tenantId,
+        to: sendMessageData.to,
+        message: sendMessageData.message,
+        type: sendMessageData.type || 'text',
+        priority: sendMessageData.priority || 'normal',
+        scheduledAt: sendMessageData.scheduledAt,
+        metadata: sendMessageData.metadata,
+      });
+
+      this.logger.log(`Message queued for async processing`, {
+        jobId,
+        deviceId: sendMessageData.deviceId,
+        to: sendMessageData.to,
+        priority: sendMessageData.priority,
+      });
+
+      return { jobId, queued: true };
+    } catch (error) {
+      this.logger.error(`Failed to queue message:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Queue multiple messages for bulk processing
+   */
+  async queueBulkMessages(messages: (SendMessageData & { priority?: 'low' | 'normal' | 'high' | 'critical' })[]): Promise<{ jobIds: string[]; queued: number }> {
+    try {
+      const jobIds = await this.messageQueueService.queueBulkMessages(messages.map(msg => ({
+        deviceId: msg.deviceId,
+        userId: msg.userId,
+        tenantId: msg.tenantId,
+        to: msg.to,
+        message: msg.message,
+        type: msg.type || 'text',
+        priority: msg.priority || 'normal',
+        scheduledAt: msg.scheduledAt,
+        metadata: msg.metadata,
+      })));
+
+      this.logger.log(`Bulk messages queued`, {
+        count: messages.length,
+        jobIds: jobIds.slice(0, 5), // Log first 5 IDs
+      });
+
+      return { jobIds, queued: messages.length };
+    } catch (error) {
+      this.logger.error(`Failed to queue bulk messages:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get message job status
+   */
+  async getMessageJobStatus(jobId: string): Promise<any> {
+    return this.messageQueueService.getJobStatus(jobId);
+  }
+
+  /**
+   * Cancel a queued message
+   */
+  async cancelQueuedMessage(jobId: string): Promise<boolean> {
+    return this.messageQueueService.cancelJob(jobId);
   }
 
   async disconnectDevice(deviceId: string, userId: string, tenantId: string): Promise<{ success: boolean }> {

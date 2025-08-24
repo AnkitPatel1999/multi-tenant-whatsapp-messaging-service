@@ -1,0 +1,61 @@
+{
+  "scalability-dependencies": {
+    "production": {
+      "redis": "^4.6.7",
+      "@nestjs/cache-manager": "^2.1.0",
+      "cache-manager-redis-store": "^3.0.1",
+      "bull": "^4.11.3",
+      "bullmq": "^4.8.0",
+      "@nestjs/bull": "^10.0.1",
+      "@bull-board/api": "^5.8.0",
+      "@bull-board/express": "^5.8.0",
+      "ioredis": "^5.3.2"
+    },
+    "development": {
+      "@types/bull": "^4.10.0"
+    }
+  },
+  "installation-commands": [
+    "npm install redis @nestjs/cache-manager cache-manager-redis-store bull bullmq @nestjs/bull @bull-board/api @bull-board/express ioredis",
+    "npm install -D @types/bull"
+  ],
+  "docker-compose-services": {
+    "redis": {
+      "image": "redis:7-alpine",
+      "ports": ["6379:6379"],
+      "command": "redis-server --appendonly yes",
+      "volumes": ["redis-data:/data"]
+    },
+    "redis-commander": {
+      "image": "rediscommander/redis-commander:latest",
+      "ports": ["8081:8081"],
+      "environment": {
+        "REDIS_HOSTS": "local:redis:6379"
+      },
+      "depends_on": ["redis"]
+    }
+  },
+  "recommended-production-setup": {
+    "redis-cluster": "3 master nodes + 3 replica nodes",
+    "mongodb-replica-set": "3 node replica set with read preference",
+    "application-instances": "3-5 instances behind load balancer",
+    "monitoring": "Prometheus + Grafana for metrics",
+    "logging": "ELK stack for centralized logs"
+  },
+  "environment-variables": {
+    "development": {
+      "REDIS_HOST": "localhost",
+      "REDIS_PORT": "6379",
+      "DB_MAX_POOL_SIZE": "5",
+      "QUEUE_MESSAGE_CONCURRENCY": "3",
+      "RATE_LIMIT_NORMAL": "60"
+    },
+    "production": {
+      "REDIS_HOST": "redis-cluster-endpoint",
+      "REDIS_PORT": "6379",
+      "DB_MAX_POOL_SIZE": "20",
+      "QUEUE_MESSAGE_CONCURRENCY": "10",
+      "RATE_LIMIT_NORMAL": "120"
+    }
+  }
+}

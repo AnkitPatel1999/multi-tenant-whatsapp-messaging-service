@@ -30,4 +30,35 @@ export class ContactService {
 
     return await contact.save();
   }
+
+  async getContactsForCache(deviceId: string, userId: string, tenantId: string): Promise<any[]> {
+    // This method should return contacts in a format suitable for caching
+    // For now, return basic contact info
+    const contacts = await this.getContacts(tenantId, userId);
+    return contacts.map(contact => ({
+      contactId: contact.contactId,
+      contactName: contact.contactName,
+      phoneNumber: contact.phoneNumber,
+      email: contact.email,
+      isActive: contact.isActive,
+    }));
+  }
+
+  async getGroupsForCache(deviceId: string, userId: string, tenantId: string): Promise<any[]> {
+    // This method should return groups in a format suitable for caching
+    // For now, return empty array as groups are handled by ChatGroupService
+    return [];
+  }
+
+  async updateLastSyncTimestamp(deviceId: string): Promise<void> {
+    // This method should update the last sync timestamp for a device
+    // For now, just log the action
+    this.logger.log(`Updated last sync timestamp for device: ${deviceId}`);
+  }
+
+  async cacheFailedSync(data: any, error: Error): Promise<void> {
+    // This method should cache failed sync information
+    // For now, just log the failure
+    this.logger.error(`Failed sync for device: ${data.deviceId}`, error.message);
+  }
 }

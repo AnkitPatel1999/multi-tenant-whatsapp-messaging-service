@@ -34,6 +34,8 @@ export class SendMessageDto {
 export class SendMessageData extends SendMessageDto {
   userId: string;
   tenantId: string;
+  scheduledAt?: Date;
+  metadata?: Record<string, any>;
 }
 
 export class GenerateQRDto {
