@@ -709,9 +709,31 @@ export class BaileysService {
       const connection = this.connections.get(deviceId);
       const device = await this.deviceModel.findOne({ deviceId }).exec();
       
+      // Determine actual connection status
+      const actualConnectionStatus = !!connection;
+      
+      // Check if database status needs to be synced
+      if (device && device.isConnected !== actualConnectionStatus) {
+        try {
+          // Update database to match actual connection status
+          await this.deviceModel.updateOne(
+            { deviceId },
+            { 
+              isConnected: actualConnectionStatus,
+              lastConnectedAt: actualConnectionStatus ? new Date() : device.lastConnectedAt,
+              updatedAt: new Date()
+            }
+          );
+          
+          this.logger.log(`Synced device ${deviceId} connection status: database ${device.isConnected} → actual ${actualConnectionStatus}`);
+        } catch (updateError) {
+          this.logger.warn(`Failed to sync device ${deviceId} connection status:`, updateError.message);
+        }
+      }
+      
       return {
         deviceId,
-        isConnected: !!connection,
+        isConnected: actualConnectionStatus,
         deviceInfo: device,
         hasQR: !!(device?.qrCode && device.qrExpiry && new Date() < device.qrExpiry),
       };
@@ -1454,6 +1476,84 @@ export class BaileysService {
         message: `Manual sync failed: ${error.message}`,
         synced: 0
       };
+    }
+  }
+
+  /**
+   * Refresh connection status for all devices
+   * Useful for bulk synchronization
+   */
+  async refreshAllDeviceConnectionStatuses(): Promise<{
+    totalDevices: number;
+    syncedDevices: number;
+    failedDevices: number;
+    results: Array<{
+      deviceId: string;
+      previousStatus: boolean;
+      currentStatus: boolean;
+      synced: boolean;
+      error?: string;
+    }>;
+  }> {
+    const results: any[] = [];
+    let syncedDevices = 0;
+    let failedDevices = 0;
+    
+    try {
+      // Get all devices from database
+      const allDevices = await this.deviceModel.find({}).exec();
+      
+      for (const device of allDevices) {
+        try {
+          const connection = this.connections.get(device.deviceId);
+          const actualConnectionStatus = !!connection;
+          
+          if (device.isConnected !== actualConnectionStatus) {
+            // Update database to match actual connection status
+            await this.deviceModel.updateOne(
+              { _id: device._id },
+              { 
+                isConnected: actualConnectionStatus,
+                lastConnectedAt: actualConnectionStatus ? new Date() : device.lastConnectedAt,
+                updatedAt: new Date()
+              }
+            );
+            
+            syncedDevices++;
+            this.logger.log(`Refreshed device ${device.deviceId} connection status: ${device.isConnected} → ${actualConnectionStatus}`);
+          }
+          
+          results.push({
+            deviceId: device.deviceId,
+            previousStatus: device.isConnected,
+            currentStatus: actualConnectionStatus,
+            synced: device.isConnected === actualConnectionStatus
+          });
+          
+        } catch (error) {
+          failedDevices++;
+          this.logger.error(`Failed to refresh connection status for device ${device.deviceId}:`, error.message);
+          
+          results.push({
+            deviceId: device.deviceId,
+            previousStatus: device.isConnected,
+            currentStatus: false,
+            synced: false,
+            error: error.message
+          });
+        }
+      }
+      
+      return {
+        totalDevices: allDevices.length,
+        syncedDevices,
+        failedDevices,
+        results
+      };
+      
+    } catch (error) {
+      this.logger.error('Error refreshing all device connection statuses:', error.message);
+      throw error;
     }
   }
 }

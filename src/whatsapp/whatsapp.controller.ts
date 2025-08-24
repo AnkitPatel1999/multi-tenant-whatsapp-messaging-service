@@ -216,9 +216,12 @@ export class WhatsAppController {
         data: {
           type: 'object',
           properties: {
-            qrCode: { type: 'string', description: 'Base64 encoded QR code image', example: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...' },
-            qrText: { type: 'string', description: 'QR code text for manual entry', example: '1@ABC123DEF...' },
-            expiresIn: { type: 'number', description: 'QR code expiration time in seconds', example: 300 }
+            deviceId: { type: 'string', example: 'e8daab9d-47f8-4377-89c9-578ec6d7312e' },
+            qrCode: { type: 'string', description: 'QR code text for manual entry', example: '2@REK9ktsEzXOZNiExmNwcgN47C5oyxwEJoSuhevpGg3I+T2nRyPQ3ndHrupIalBrpsU4g3SBOhMrLNIvRLlIFj919PLgTN5iV/fU=' },
+            qrCodeImage: { type: 'string', description: 'Base64 encoded QR code image (data URL)', example: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...' },
+            qrCodeBase64: { type: 'string', description: 'Base64 string without data URL prefix', example: 'iVBORw0KGgoAAAANSUhEUgAA...' },
+            qrExpiry: { type: 'string', description: 'QR code expiration timestamp', example: '2025-08-24T17:20:27.804Z' },
+            isConnected: { type: 'boolean', example: false }
           }
         },
         error: { type: 'number', example: 0 }
@@ -284,6 +287,8 @@ export class WhatsAppController {
       return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }
+
+
 
   @Post('send')
   @RequirePermissions(PERMISSIONS.VIEW_LOGS)
@@ -729,6 +734,130 @@ export class WhatsAppController {
     } catch (err) {
       responseData.error = 1;
       responseData.message = 'Error: Failed to get device status!';
+      responseData.confidentialErrorMessage = err.message;
+      
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
+    }
+  }
+
+  @Post('devices/:deviceId/sync-connection-status')
+  @RequirePermissions(PERMISSIONS.VIEW_LOGS)
+  @ApiOperation({
+    summary: 'Sync device connection status',
+    description: 'Manually sync the device connection status with the actual connection state'
+  })
+  @ApiParam({
+    name: 'deviceId',
+    description: 'Device ID to sync connection status for',
+    type: 'string',
+    example: '68a6f42f-806a-43d1-9f64-18c25a4f944f'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Connection status synced successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Connection status synced successfully' },
+        data: {
+          type: 'object',
+          properties: {
+            deviceId: { type: 'string', example: '68a6f42f-806a-43d1-9f64-18c25a4f944f' },
+            previousStatus: { type: 'boolean', example: false },
+            currentStatus: { type: 'boolean', example: true },
+            synced: { type: 'boolean', example: true },
+            message: { type: 'string', example: 'Device connection status synced from false to true' }
+          }
+        },
+        error: { type: 'number', example: 0 }
+      }
+    }
+  })
+  async syncDeviceConnectionStatus(@Req() request, @Res() response, @Param('deviceId') deviceId: string) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string | null;
+    } = {
+      message: 'Something went wrong!',
+      data: {},
+      error: 0,
+      confidentialErrorMessage: null
+    }
+    try {
+      const result = await this.whatsappService.syncDeviceConnectionStatus(deviceId, request.user.userId, request.user.tenantId);
+      responseData.message = 'Connection status synced successfully';
+      responseData.data = result;
+      return response.status(HttpStatus.OK).json(responseData);
+    } catch (err) {
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to sync connection status!';
+      responseData.confidentialErrorMessage = err.message;
+      
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
+    }
+  }
+
+  @Post('devices/refresh-all-connection-statuses')
+  @RequirePermissions(PERMISSIONS.VIEW_LOGS)
+  @ApiOperation({
+    summary: 'Refresh all device connection statuses',
+    description: 'Bulk refresh connection statuses for all devices to ensure database synchronization'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'All device connection statuses refreshed successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'All device connection statuses refreshed successfully' },
+        data: {
+          type: 'object',
+          properties: {
+            message: { type: 'string', example: 'Connection statuses refreshed for 2 devices' },
+            totalDevices: { type: 'number', example: 2 },
+            syncedDevices: { type: 'number', example: 1 },
+            failedDevices: { type: 'number', example: 0 },
+            results: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  deviceId: { type: 'string', example: '68a6f42f-806a-43d1-9f64-18c25a4f944f' },
+                  previousStatus: { type: 'boolean', example: false },
+                  currentStatus: { type: 'boolean', example: true },
+                  synced: { type: 'boolean', example: true }
+                }
+              }
+            },
+            timestamp: { type: 'string', example: '2025-08-24T17:45:00.000Z' }
+          }
+        },
+        error: { type: 'number', example: 0 }
+      }
+    }
+  })
+  async refreshAllDeviceConnectionStatuses(@Req() request, @Res() response) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string | null;
+    } = {
+      message: 'Something went wrong!',
+      data: {},
+      error: 0,
+      confidentialErrorMessage: null
+    }
+    try {
+      const result = await this.whatsappService.refreshAllDeviceConnectionStatuses();
+      responseData.message = 'All device connection statuses refreshed successfully';
+      responseData.data = result;
+      return response.status(HttpStatus.OK).json(responseData);
+    } catch (err) {
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to refresh all device connection statuses!';
       responseData.confidentialErrorMessage = err.message;
       
       return response.status(HttpStatus.BAD_REQUEST).json(responseData);

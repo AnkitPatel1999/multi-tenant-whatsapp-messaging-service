@@ -14,6 +14,7 @@ import {
   WhatsAppMessageResult,
   WhatsAppQRResult 
 } from '../dto/whatsapp.dto';
+import * as QRCode from 'qrcode';
 
 @Injectable()
 export class WhatsAppService {
@@ -57,11 +58,36 @@ export class WhatsAppService {
       throw new NotFoundException('Devices not found');
     }
     
-    // Get connection status for each device
+    // Get connection status for each device and sync with database
     const devicesWithStatus = await Promise.all(
       devices.map(async (device) => {
         try {
           const status = await this.baileysService.getConnectionStatus(device.deviceId);
+          
+          // Check if device connection status needs to be updated in database
+          if (device.isConnected !== status.isConnected) {
+            try {
+              // Update device connection status in database
+              await this.deviceModel.updateOne(
+                { _id: device._id },
+                { 
+                  isConnected: status.isConnected,
+                  lastConnectedAt: status.isConnected ? new Date() : device.lastConnectedAt
+                }
+              );
+              
+              // Update the device object for this response
+              device.isConnected = status.isConnected;
+              if (status.isConnected) {
+                device.lastConnectedAt = new Date();
+              }
+              
+              this.logger.log(`Updated device ${device.deviceId} connection status: ${status.isConnected}`);
+            } catch (updateError) {
+              this.logger.warn(`Failed to update device ${device.deviceId} connection status:`, updateError.message);
+            }
+          }
+          
           return { ...device.toObject(), connectionStatus: status };
         } catch (error) {
           this.logger.warn(`Error getting connection status for device ${device.deviceId}:`, error.message);
@@ -97,9 +123,44 @@ export class WhatsAppService {
       
       const status = await this.baileysService.getConnectionStatus(deviceId);
       
+      // Generate QR code image if we have QR text
+      let qrCodeImage: string | undefined;
+      let qrCodeBase64: string | undefined;
+      
+      if (status.deviceInfo?.qrCode) {
+        try {
+          // Generate QR code as base64 data URL (PNG format)
+          qrCodeImage = await QRCode.toDataURL(status.deviceInfo.qrCode, {
+            errorCorrectionLevel: 'M',
+            margin: 1,
+            color: {
+              dark: '#000000',
+              light: '#FFFFFF'
+            }
+          });
+          
+          // Also provide just the base64 string without data URL prefix for flexibility
+          qrCodeBase64 = await QRCode.toBuffer(status.deviceInfo.qrCode, {
+            errorCorrectionLevel: 'M',
+            type: 'png',
+            margin: 1,
+            color: {
+              dark: '#000000',
+              light: '#FFFFFF'
+            }
+          }).then(buffer => buffer.toString('base64'));
+          
+        } catch (qrError) {
+          this.logger.warn(`Failed to generate QR code image for device ${deviceId}:`, qrError.message);
+          // Continue without image, fallback to text
+        }
+      }
+      
       return {
         deviceId,
-        qrCode: status.deviceInfo?.qrCode,
+        qrCode: status.deviceInfo?.qrCode, // Keep original text for backward compatibility
+        qrCodeImage, // PNG image as data URL (data:image/png;base64,...)
+        qrCodeBase64, // Just the base64 string without data URL prefix
         qrExpiry: status.deviceInfo?.qrExpiry,
         isConnected: status.isConnected,
       };
@@ -109,11 +170,15 @@ export class WhatsAppService {
       return {
         deviceId,
         qrCode: undefined,
+        qrCodeImage: undefined,
+        qrCodeBase64: undefined,
         qrExpiry: undefined,
         isConnected: false,
       };
     }
   }
+
+
 
   async sendMessage(sendMessageData: SendMessageData): Promise<WhatsAppMessageResult> {
     // Use cached device lookup first
@@ -377,6 +442,23 @@ export class WhatsAppService {
       const connectionStatus = await this.baileysService.getConnectionStatus(deviceId);
       const retryStatus = this.baileysService.getDeviceRetryStatus(deviceId);
       
+      // Sync connection status with database if different
+      if (device.isConnected !== connectionStatus.isConnected) {
+        try {
+          await this.deviceModel.updateOne(
+            { _id: device._id },
+            { 
+              isConnected: connectionStatus.isConnected,
+              lastConnectedAt: connectionStatus.isConnected ? new Date() : device.lastConnectedAt
+            }
+          );
+          
+          this.logger.log(`Synced device ${deviceId} connection status: ${connectionStatus.isConnected}`);
+        } catch (updateError) {
+          this.logger.warn(`Failed to sync device ${deviceId} connection status:`, updateError.message);
+        }
+      }
+      
       return {
         deviceId,
         deviceName: device.deviceName,
@@ -397,6 +479,45 @@ export class WhatsAppService {
         retryInfo: this.baileysService.getDeviceRetryStatus(deviceId),
         error: error.message
       };
+    }
+  }
+
+  /**
+   * Manually sync connection status for a device
+   * Useful for debugging connection status mismatches
+   */
+  async syncDeviceConnectionStatus(deviceId: string, userId: string, tenantId: string): Promise<any> {
+    const device = await this.deviceModel.findOne({ deviceId, userId, tenantId }).exec();
+    if (!device) {
+      throw new NotFoundException('Device not found');
+    }
+
+    try {
+      const connectionStatus = await this.baileysService.getConnectionStatus(deviceId);
+      
+      // Always update the database with current connection status
+      const updateResult = await this.deviceModel.updateOne(
+        { _id: device._id },
+        { 
+          isConnected: connectionStatus.isConnected,
+          lastConnectedAt: connectionStatus.isConnected ? new Date() : device.lastConnectedAt,
+          updatedAt: new Date()
+        }
+      );
+      
+      this.logger.log(`Manually synced device ${deviceId} connection status: ${connectionStatus.isConnected}`);
+      
+      return {
+        deviceId,
+        previousStatus: device.isConnected,
+        currentStatus: connectionStatus.isConnected,
+        synced: updateResult.modifiedCount > 0,
+        connectionDetails: connectionStatus,
+        message: `Device connection status synced from ${device.isConnected} to ${connectionStatus.isConnected}`
+      };
+    } catch (error) {
+      this.logger.error(`Error syncing connection status for device ${deviceId}:`, error.message);
+      throw error;
     }
   }
   
@@ -508,5 +629,29 @@ export class WhatsAppService {
     }
 
     return await this.whatsappSync.getSyncStats(deviceId);
+  }
+
+  /**
+   * Refresh all device connection statuses
+   * Useful for bulk synchronization and debugging
+   */
+  async refreshAllDeviceConnectionStatuses(): Promise<any> {
+    try {
+      const result = await this.baileysService.refreshAllDeviceConnectionStatuses();
+      
+      this.logger.log(`Refreshed connection statuses for ${result.totalDevices} devices. Synced: ${result.syncedDevices}, Failed: ${result.failedDevices}`);
+      
+      return {
+        message: `Connection statuses refreshed for ${result.totalDevices} devices`,
+        totalDevices: result.totalDevices,
+        syncedDevices: result.syncedDevices,
+        failedDevices: result.failedDevices,
+        results: result.results,
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      this.logger.error('Error refreshing all device connection statuses:', error.message);
+      throw error;
+    }
   }
 }

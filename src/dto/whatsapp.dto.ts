@@ -98,6 +98,8 @@ export interface WhatsAppConnectionResult {
 export interface WhatsAppQRResult {
   deviceId: string;
   qrCode?: string;
+  qrCodeImage?: string; // Base64 encoded QR code image (data URL)
+  qrCodeBase64?: string; // Just the base64 string without data URL prefix
   qrExpiry?: Date;
   isConnected: boolean;
 }

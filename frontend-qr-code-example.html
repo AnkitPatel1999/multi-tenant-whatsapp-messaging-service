@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp QR Code Display Examples</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .qr-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .qr-image {
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .method-title {
+            color: #2c3e50;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .code-block {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            margin: 10px 0;
+            border-left: 4px solid #007bff;
+        }
+        .button {
+            background: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .button:hover {
+            background: #0056b3;
+        }
+        .error {
+            color: #dc3545;
+            background: #f8d7da;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .success {
+            color: #155724;
+            background: #d4edda;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔗 WhatsApp QR Code Display Examples</h1>
+    <p>This page demonstrates different ways to display QR codes from your WhatsApp API response.</p>
+
+    <div class="container">
+        <h2>📱 API Response Format</h2>
+        <p>Your API now returns QR codes in multiple formats:</p>
+        <div class="code-block">{
+  "message": "QR code generated successfully",
+  "data": {
+    "deviceId": "e8daab9d-47f8-4377-89c9-578ec6d7312e",
+    "qrCode": "2@REK9ktsEzXOZNiExmNwcgN47C5oyxwEJoSuhevpGg3I+T2nRyPQ3ndHrupIalBrpsU4g3SBOhMrLNIvRLlIFj919PLgTN5iV/fU=",
+    "qrCodeImage": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
+    "qrCodeBase64": "iVBORw0KGgoAAAANSUhEUgAA...",
+    "qrExpiry": "2025-08-24T17:20:27.804Z",
+    "isConnected": true
+  },
+  "error": 0
+}</div>
+    </div>
+
+    <div class="container">
+        <h2>🎯 Method 1: Using qrCodeImage (Data URL) - Recommended</h2>
+        <div class="qr-section">
+            <div class="method-title">✅ Direct Image Display</div>
+            <p>Use the <code>qrCodeImage</code> field directly in an img tag:</p>
+            <div class="code-block">&lt;img src="response.data.qrCodeImage" alt="QR Code" /&gt;</div>
+            
+            <div id="qr-image-1" class="qr-image">
+                <p>QR Code will appear here when loaded...</p>
+            </div>
+            
+            <button class="button" onclick="loadQRCodeMethod1()">Load QR Code (Method 1)</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>🎯 Method 2: Using qrCodeBase64 (Base64 String)</h2>
+        <div class="qr-section">
+            <div class="method-title">✅ Manual Data URL Construction</div>
+            <p>Use the <code>qrCodeBase64</code> field and construct the data URL manually:</p>
+            <div class="code-block">const dataUrl = `data:image/png;base64,${response.data.qrCodeBase64}`;
+document.getElementById('qr-image-2').src = dataUrl;</div>
+            
+            <div id="qr-image-2" class="qr-image">
+                <p>QR Code will appear here when loaded...</p>
+            </div>
+            
+            <button class="button" onclick="loadQRCodeMethod2()">Load QR Code (Method 2)</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>🎯 Method 3: Download QR Code as File</h2>
+        <div class="qr-section">
+            <div class="method-title">✅ Download Functionality</div>
+            <p>Download the QR code as a PNG file:</p>
+            <div class="code-block">function downloadQRCode(base64String, filename = 'whatsapp-qr-code.png') {
+  const link = document.createElement('a');
+  link.href = `data:image/png;base64,${base64String}`;
+  link.download = filename;
+  link.click();
+}</div>
+            
+            <button class="button" onclick="downloadQRCodeDemo()">Download QR Code</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>🎯 Method 4: Canvas Rendering (Advanced)</div>
+        <div class="qr-section">
+            <div class="method-title">✅ Canvas-based Display</div>
+            <p>Render the QR code on a canvas for advanced manipulation:</p>
+            <div class="code-block">function renderQRCodeOnCanvas(base64String, canvasId) {
+  const canvas = document.getElementById(canvasId);
+  const ctx = canvas.getContext('2d');
+  const img = new Image();
+  
+  img.onload = () => {
+    canvas.width = img.width;
+    canvas.height = img.height;
+    ctx.drawImage(img, 0, 0);
+  };
+  
+  img.src = `data:image/png;base64,${base64String}`;
+}</div>
+            
+            <canvas id="qr-canvas" width="200" height="200" style="border: 1px solid #ddd;"></canvas>
+            <br>
+            <button class="button" onclick="renderQRCodeOnCanvasDemo()">Render on Canvas</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>🔧 JavaScript Implementation</h2>
+        <div class="qr-section">
+            <div class="method-title">✅ Complete Frontend Code</div>
+            <p>Here's how to implement this in your frontend application:</p>
+            <div class="code-block">// Function to fetch and display QR code
+async function generateAndDisplayQRCode(deviceId) {
+  try {
+    const response = await fetch(`/api/whatsapp/devices/${deviceId}/qr`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${yourAuthToken}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    const result = await response.json();
+    
+    if (result.error === 0 && result.data.qrCodeImage) {
+      // Method 1: Direct display (recommended)
+      document.getElementById('qr-code-display').src = result.data.qrCodeImage;
+      
+      // Method 2: Manual construction
+      const dataUrl = `data:image/png;base64,${result.data.qrCodeBase64}`;
+      document.getElementById('qr-code-display-2').src = dataUrl;
+      
+      // Method 3: Download option
+      document.getElementById('download-btn').onclick = () => {
+        downloadQRCode(result.data.qrCodeBase64, `qr-${deviceId}.png`);
+      };
+      
+      return result.data;
+    } else {
+      throw new Error(result.confidentialErrorMessage || 'Failed to generate QR code');
+    }
+  } catch (error) {
+    console.error('Error generating QR code:', error);
+    showError('Failed to generate QR code: ' + error.message);
+  }
+}
+
+// Download function
+function downloadQRCode(base64String, filename = 'whatsapp-qr-code.png') {
+  const link = document.createElement('a');
+  link.href = `data:image/png;base64,${base64String}`;
+  link.download = filename;
+  link.click();
+}</div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>🚨 Common Issues & Solutions</h2>
+        <div class="qr-section">
+            <div class="method-title">❌ Problem: Image not displaying</div>
+            <p><strong>Solution:</strong> Check if the base64 string is properly formatted. Use <code>qrCodeImage</code> field for direct display.</p>
+            
+            <div class="method-title">❌ Problem: CORS issues</div>
+            <p><strong>Solution:</strong> Ensure your API returns proper CORS headers. The base64 approach avoids CORS issues.</p>
+            
+            <div class="method-title">❌ Problem: Large image size</div>
+            <p><strong>Solution:</strong> The QR code is optimized for size. If you need larger display, use CSS scaling:</p>
+            <div class="code-block">img {
+  width: 300px;
+  height: 300px;
+  object-fit: contain;
+}</div>
+        </div>
+    </div>
+
+    <script>
+        // Demo QR code data (replace with actual API response)
+        const demoQRData = {
+            qrCodeImage: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...", // This would be your actual data
+            qrCodeBase64: "iVBORw0KGgoAAAANSUhEUgAA..." // This would be your actual data
+        };
+
+        // Method 1: Direct display
+        function loadQRCodeMethod1() {
+            const container = document.getElementById('qr-image-1');
+            container.innerHTML = '<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==" alt="Demo QR Code" style="width: 200px; height: 200px;">';
+            showSuccess('Method 1: QR Code loaded successfully using data URL!');
+        }
+
+        // Method 2: Manual construction
+        function loadQRCodeMethod2() {
+            const container = document.getElementById('qr-image-2');
+            const dataUrl = `data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="`;
+            container.innerHTML = `<img src="${dataUrl}" alt="Demo QR Code" style="width: 200px; height: 200px;">`;
+            showSuccess('Method 2: QR Code loaded successfully using manual base64 construction!');
+        }
+
+        // Method 3: Download demo
+        function downloadQRCodeDemo() {
+            const base64String = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+            downloadQRCode(base64String, 'demo-qr-code.png');
+            showSuccess('Demo QR Code downloaded!');
+        }
+
+        // Method 4: Canvas rendering demo
+        function renderQRCodeOnCanvasDemo() {
+            const canvas = document.getElementById('qr-canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Create a simple demo pattern
+            ctx.fillStyle = '#000';
+            ctx.fillRect(10, 10, 180, 180);
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(20, 20, 160, 160);
+            ctx.fillStyle = '#000';
+            ctx.fillRect(30, 30, 140, 140);
+            
+            showSuccess('Method 4: QR Code rendered on canvas!');
+        }
+
+        // Download function
+        function downloadQRCode(base64String, filename = 'whatsapp-qr-code.png') {
+            const link = document.createElement('a');
+            link.href = `data:image/png;base64,${base64String}`;
+            link.download = filename;
+            link.click();
+        }
+
+        // Utility functions
+        function showSuccess(message) {
+            const div = document.createElement('div');
+            div.className = 'success';
+            div.textContent = message;
+            document.body.appendChild(div);
+            setTimeout(() => div.remove(), 3000);
+        }
+
+        function showError(message) {
+            const div = document.createElement('div');
+            div.className = 'error';
+            div.textContent = message;
+            document.body.appendChild(div);
+            setTimeout(() => div.remove(), 5000);
+        }
+    </script>
+</body>
+</html>
