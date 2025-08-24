@@ -57,21 +57,12 @@ export class UserController {
 
   @Get(':userId')
   @RequirePermissions(PERMISSIONS.VIEW_LOGS)
-  async getUserById(@Req() request, @Res() response, @Param('userId') userId: string) {
-    try {
-      const user = await this.userService.findById(userId);
-      return response.status(HttpStatus.OK).json({
-        message: 'User retrieved successfully',
-        user
-      });
-    } catch (err) {
-      return response.status(HttpStatus.BAD_REQUEST).json({
-        statusCode: 400,
-        message: 'Error: Failed to retrieve user!',
-        error: 'Bad Request',
-        confidentialErrorMessage: err.message
-      });
-    }
+  async getUserById(@Param('userId') userId: string) {
+    const user = await this.userService.findById(userId);
+    return {
+      message: 'User retrieved successfully',
+      user
+    };
   }
 
   @Put(':userId/group')
