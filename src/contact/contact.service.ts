@@ -10,7 +10,9 @@ export class ContactService {
 
   constructor(
     @InjectModel(Contact.name) private contactModel: Model<ContactDocument>,
-  ) {}
+  ) {
+    console.log('ContactService constructor called');
+  }
 
   async getContacts(tenantId: string, userId?: string): Promise<ContactDocument[]> {
     const filter: any = { tenantId, isActive: true };
@@ -20,6 +22,7 @@ export class ContactService {
   }
 
   async createContact(contactData: Partial<Contact>): Promise<ContactDocument> {
+    console.log('createContact service called');
     const contact = new this.contactModel({
       contactId: uuidv4(),
       ...contactData,
