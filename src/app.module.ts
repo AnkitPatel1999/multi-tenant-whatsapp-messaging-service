@@ -33,6 +33,8 @@ import { MessageModule } from './message/message.module';
 import { ContactModule } from './contact/contact.module';
 import { ChatGroupModule } from './chat-group/chat-group.module';
 import { AppThrottlerModule } from './common/throttler/throttler.module';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard } from '@nestjs/throttler';
 
 @Module({
   imports: [
@@ -73,6 +75,6 @@ import { AppThrottlerModule } from './common/throttler/throttler.module';
   ],
 
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

@@ -3,14 +3,18 @@ import { ChatGroupService } from './chat-group.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { TenantScope } from '../auth/decorators/tenant-scope.decorator';
 import { TenantScopeGuard } from '../auth/guards/tenant-scope.guard';
+import { PermissionGuard, RequirePermissions } from '../auth/guards/permission.guard';
+import { PERMISSIONS } from '../auth/constants/permissions';
+import { CreateChatGroupDto } from '../dto/create-chat-group.dto';
 
 @Controller('groups')
-@UseGuards(JwtAuthGuard, TenantScopeGuard)
+@UseGuards(JwtAuthGuard, TenantScopeGuard, PermissionGuard)
 @TenantScope()
 export class ChatGroupController {
   constructor(private chatGroupService: ChatGroupService) {}
 
   @Get()
+  @RequirePermissions(PERMISSIONS.VIEW_GROUPS)
   async getGroups(@Req() request, @Res() response, @Query('userId') userId?: string) {
     const responseData: {
       message: string;
@@ -38,7 +42,8 @@ export class ChatGroupController {
   }
 
   @Post()
-  async createGroup(@Req() request, @Res() response, @Body() createGroupDto: any) {
+  @RequirePermissions(PERMISSIONS.MANAGE_CHAT_GROUPS)
+  async createGroup(@Req() request, @Res() response, @Body() createGroupDto: CreateChatGroupDto) {
     const responseData: {
       message: string;
       data: any;

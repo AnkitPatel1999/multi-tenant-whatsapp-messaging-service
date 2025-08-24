@@ -6,6 +6,7 @@ import { TenantScopeGuard } from '../auth/guards/tenant-scope.guard';
 import { PermissionGuard, RequirePermissions } from '../auth/guards/permission.guard';
 import { CreateUserDto, CreateUserData } from '../dto/create-user.dto';
 import { PERMISSIONS } from '../auth/constants/permissions';
+import { AssignUserToGroupDto } from '../dto/assign-user-to-group.dto';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard, TenantScopeGuard, PermissionGuard)
@@ -111,7 +112,7 @@ export class UserController {
     @Req() request,
     @Res() response,
     @Param('userId') userId: string,
-    @Body() body: { groupId: string }
+    @Body() body: AssignUserToGroupDto
   ) {
     const responseData: {
       message: string;
