@@ -54,7 +54,6 @@ export class BaileysService {
       // Create connection
       const sock = makeWASocket({
         version,
-        printQRInTerminal: true,
         logger: this.baileysLogger,
         browser: ['WhatsApp API', 'Chrome', '1.0.0'],
         connectTimeoutMs: 60_000,
@@ -78,6 +77,7 @@ export class BaileysService {
         if (qr) {
           // Generate QR code and store it
           await this.updateQRCode(deviceId, qr);
+          this.logger.log(`QR code generated for device ${deviceId}`);
         }
 
         if (connection === 'close') {
@@ -90,7 +90,14 @@ export class BaileysService {
         } else if (connection === 'open') {
           this.logger.log('Connection opened');
           await this.updateConnectionStatus(deviceId, true);
+          // Save auth state after successful connection
+          await this.saveAuthState(deviceId, authState);
         }
+      });
+
+      // Handle credential updates
+      sock.ev.on('creds.update', async () => {
+        await this.saveAuthState(deviceId, authState);
       });
 
       // Handle messages
@@ -112,19 +119,44 @@ export class BaileysService {
 
   private async getOrCreateAuthState(deviceId: string): Promise<any> {
     try {
-      const device = await this.deviceModel.findOne({ deviceId });
+      // Ensure sessions directory exists
+      const sessionsDir = './sessions';
+      const deviceSessionDir = path.join(sessionsDir, deviceId);
       
-      if (device?.authState) {
-        // Load existing auth state from database
-        return JSON.parse(device.authState);
-      } else {
-        // Create new auth state
-        const authState = await useMultiFileAuthState(`./sessions/${deviceId}`);
-        return authState;
+      if (!fs.existsSync(sessionsDir)) {
+        fs.mkdirSync(sessionsDir, { recursive: true });
       }
+
+      if (!fs.existsSync(deviceSessionDir)) {
+        fs.mkdirSync(deviceSessionDir, { recursive: true });
+      }
+
+      // Use file-based auth state for reliability
+      const authState = await useMultiFileAuthState(deviceSessionDir);
+      
+      this.logger.log(`Auth state loaded for device ${deviceId}`);
+      return authState;
     } catch (error) {
       this.logger.error('Error getting auth state:', error);
       throw error;
+    }
+  }
+
+  private async saveAuthState(deviceId: string, authState: any): Promise<void> {
+    try {
+      // Auth state is automatically saved to files by useMultiFileAuthState
+      // But we can also save a backup to database if needed
+      await this.deviceModel.updateOne(
+        { deviceId },
+        { 
+          authState: JSON.stringify({
+            timestamp: new Date().toISOString(),
+            hasCredentials: !!authState.creds?.me
+          })
+        }
+      );
+    } catch (error) {
+      this.logger.error('Error saving auth state:', error);
     }
   }
 
