@@ -8,6 +8,7 @@ import { Model } from 'mongoose';
 import * as fs from 'fs';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import * as qrcode from 'qrcode-terminal';
 
 // Create a custom logger that implements ILogger interface
 class BaileysLogger {
@@ -89,6 +90,17 @@ export class BaileysService {
           // Generate QR code and store it
           await this.updateQRCode(deviceId, qr);
           this.logger.log(`QR code generated for device ${deviceId}`);
+          
+          // Display QR code in terminal for easy scanning
+          console.log('\n🔗 WhatsApp QR Code for device:', deviceId);
+          console.log('📱 Scan this QR code with your WhatsApp mobile app:');
+          console.log('   Settings → Linked Devices → Link a Device\n');
+          
+          qrcode.generate(qr, { small: true }, (qrString) => {
+            console.log(qrString);
+            console.log('\n⏰ QR code will expire in 5 minutes');
+            console.log('🔄 If expired, generate a new QR code via API\n');
+          });
         }
 
         if (connection === 'close') {
@@ -103,6 +115,11 @@ export class BaileysService {
           await this.updateConnectionStatus(deviceId, true);
           // Save auth state after successful connection
           await authState.saveCreds();
+          
+          // Display success message
+          console.log('\n✅ WhatsApp Device Connected Successfully!');
+          console.log(`📱 Device ID: ${deviceId}`);
+          console.log('🚀 You can now send messages via API\n');
         }
       });
 
