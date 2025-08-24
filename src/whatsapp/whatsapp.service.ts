@@ -1,9 +1,16 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { WhatsAppDevice, WhatsAppDeviceDocument } from '../schema/whatsapp-device.schema';
 import { BaileysService } from './baileys.service';
 import { v4 as uuidv4 } from 'uuid';
+import { 
+  CreateDeviceData, 
+  SendMessageData, 
+  WhatsAppConnectionResult,
+  WhatsAppMessageResult,
+  WhatsAppQRResult 
+} from '../dto/whatsapp.dto';
 
 @Injectable()
 export class WhatsAppService {
@@ -14,84 +21,123 @@ export class WhatsAppService {
     private baileysService: BaileysService,
   ) {}
 
-  async createDevice(userId: string, tenantId: string, deviceName: string): Promise<WhatsAppDeviceDocument> {
+  async createDevice(createDeviceData: CreateDeviceData): Promise<WhatsAppDeviceDocument> {
     const deviceId = uuidv4();
     
     const device = new this.deviceModel({
       deviceId,
-      userId,
-      tenantId,
-      deviceName,
+      ...createDeviceData,
       isActive: true,
     });
 
     await device.save();
     
-    // Create Baileys connection
-    await this.baileysService.createConnection(deviceId, userId, tenantId);
+    // Create Baileys connection - handle errors gracefully
+    try {
+      await this.baileysService.createConnection(deviceId, createDeviceData.userId, createDeviceData.tenantId);
+    } catch (error) {
+      this.logger.error(`Failed to create WhatsApp connection for device ${deviceId}:`, error.message);
+      // Device is still created successfully, connection can be retried later
+      // Don't throw the error to prevent app crash
+    }
     
     return device;
   }
 
   async getDevices(userId: string, tenantId: string): Promise<any[]> {
-    const devices = await this.deviceModel.find({ userId, tenantId, isActive: true });
+    const devices = await this.deviceModel.find({ userId, tenantId, isActive: true }).exec();
+    
+    if (!devices || devices.length === 0) {
+      throw new NotFoundException('Devices not found');
+    }
     
     // Get connection status for each device
     const devicesWithStatus = await Promise.all(
       devices.map(async (device) => {
-        const status = await this.baileysService.getConnectionStatus(device.deviceId);
-        return { ...device.toObject(), connectionStatus: status };
+        try {
+          const status = await this.baileysService.getConnectionStatus(device.deviceId);
+          return { ...device.toObject(), connectionStatus: status };
+        } catch (error) {
+          this.logger.warn(`Error getting connection status for device ${device.deviceId}:`, error.message);
+          // Return device with safe default connection status
+          return { 
+            ...device.toObject(), 
+            connectionStatus: {
+              deviceId: device.deviceId,
+              isConnected: false,
+              deviceInfo: null,
+              hasQR: false
+            }
+          };
+        }
       })
     );
     
     return devicesWithStatus;
   }
 
-  async generateQRCode(deviceId: string, userId: string, tenantId: string): Promise<any> {
-    const device = await this.deviceModel.findOne({ deviceId, userId, tenantId });
+  async generateQRCode(deviceId: string, userId: string, tenantId: string): Promise<WhatsAppQRResult> {
+    const device = await this.deviceModel.findOne({ deviceId, userId, tenantId }).exec();
     if (!device) {
-      throw new Error('Device not found');
+      throw new NotFoundException('Device not found');
     }
 
-    // Create or reconnect to get fresh QR code
-    await this.baileysService.createConnection(deviceId, userId, tenantId);
-    
-    // Wait a bit for QR generation
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    const status = await this.baileysService.getConnectionStatus(deviceId);
-    
-    return {
-      deviceId,
-      qrCode: status.deviceInfo?.qrCode,
-      qrExpiry: status.deviceInfo?.qrExpiry,
-      isConnected: status.isConnected,
-    };
+    try {
+      // Create or reconnect to get fresh QR code
+      await this.baileysService.createConnection(deviceId, userId, tenantId);
+      
+      // Wait a bit for QR generation
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      const status = await this.baileysService.getConnectionStatus(deviceId);
+      
+      return {
+        deviceId,
+        qrCode: status.deviceInfo?.qrCode,
+        qrExpiry: status.deviceInfo?.qrExpiry,
+        isConnected: status.isConnected,
+      };
+    } catch (error) {
+      this.logger.error(`Error generating QR code for device ${deviceId}:`, error.message);
+      // Return safe defaults instead of crashing
+      return {
+        deviceId,
+        qrCode: undefined,
+        qrExpiry: undefined,
+        isConnected: false,
+      };
+    }
   }
 
-  async sendMessage(deviceId: string, userId: string, tenantId: string, to: string, message: string, type: 'text' | 'media' = 'text'): Promise<any> {
-    const device = await this.deviceModel.findOne({ deviceId, userId, tenantId });
+  async sendMessage(sendMessageData: SendMessageData): Promise<WhatsAppMessageResult> {
+    const device = await this.deviceModel.findOne({ 
+      deviceId: sendMessageData.deviceId, 
+      userId: sendMessageData.userId, 
+      tenantId: sendMessageData.tenantId 
+    }).exec();
+    
     if (!device) {
-      throw new Error('Device not found');
+      throw new NotFoundException('Device not found');
     }
 
     if (!device.isConnected) {
-      throw new Error('Device not connected');
+      throw new NotFoundException('Device not connected');
     }
 
-    const result = await this.baileysService.sendMessage(deviceId, to, message, type);
+    const result = await this.baileysService.sendMessage(
+      sendMessageData.deviceId, 
+      sendMessageData.to, 
+      sendMessageData.message, 
+      sendMessageData.type || 'text'
+    );
     
-    return {
-      success: true,
-      messageId: result.messageId,
-      timestamp: new Date(),
-    };
+    return result;
   }
 
-  async disconnectDevice(deviceId: string, userId: string, tenantId: string): Promise<any> {
-    const device = await this.deviceModel.findOne({ deviceId, userId, tenantId });
+  async disconnectDevice(deviceId: string, userId: string, tenantId: string): Promise<{ success: boolean }> {
+    const device = await this.deviceModel.findOne({ deviceId, userId, tenantId }).exec();
     if (!device) {
-      throw new Error('Device not found');
+      throw new NotFoundException('Device not found');
     }
 
     // Disconnect from Baileys
@@ -102,6 +148,47 @@ export class WhatsAppService {
     device.lastConnectedAt = new Date();
     await device.save();
     
-    return { success: true, message: 'Device disconnected successfully' };
+    return { success: true };
+  }
+
+  async findById(deviceId: string): Promise<WhatsAppDeviceDocument | null> {
+    return await this.deviceModel.findOne({ deviceId }).exec();
+  }
+
+  async deleteDevice(deviceId: string, userId: string, tenantId: string): Promise<{ success: boolean }> {
+    const result = await this.deviceModel.deleteOne({ deviceId, userId, tenantId });
+    
+    if (result.deletedCount === 0) {
+      throw new NotFoundException('Device not found');
+    }
+
+    // Also disconnect if connected
+    try {
+      await this.baileysService.disconnectConnection(deviceId);
+    } catch (error) {
+      // Device might not be connected, ignore error
+      this.logger.warn(`Could not disconnect device ${deviceId}: ${error.message}`);
+    }
+
+    return { success: true };
+  }
+
+  async clearDeviceSession(deviceId: string, userId: string, tenantId: string): Promise<{ success: boolean }> {
+    const device = await this.deviceModel.findOne({ deviceId, userId, tenantId }).exec();
+    if (!device) {
+      throw new NotFoundException('Device not found');
+    }
+
+    // Clear the session files
+    await this.baileysService.clearDeviceSession(deviceId);
+    
+    // Also disconnect if connected
+    try {
+      await this.baileysService.disconnectConnection(deviceId);
+    } catch (error) {
+      this.logger.warn(`Could not disconnect device ${deviceId} during session clear: ${error.message}`);
+    }
+
+    return { success: true };
   }
 }
