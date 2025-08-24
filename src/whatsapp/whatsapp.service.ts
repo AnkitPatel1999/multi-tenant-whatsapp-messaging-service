@@ -208,4 +208,74 @@ export class WhatsAppService {
 
     return { success: true };
   }
+  
+  async forceReconnectDevice(deviceId: string, userId: string, tenantId: string): Promise<{ success: boolean; message: string }> {
+    const device = await this.deviceModel.findOne({ deviceId, userId, tenantId }).exec();
+    if (!device) {
+      throw new NotFoundException('Device not found');
+    }
+
+    return await this.baileysService.forceReconnectDevice(deviceId, userId, tenantId);
+  }
+  
+  async getDeviceConnectionStatus(deviceId: string, userId: string, tenantId: string): Promise<any> {
+    const device = await this.deviceModel.findOne({ deviceId, userId, tenantId }).exec();
+    if (!device) {
+      throw new NotFoundException('Device not found');
+    }
+
+    try {
+      const connectionStatus = await this.baileysService.getConnectionStatus(deviceId);
+      const retryStatus = this.baileysService.getDeviceRetryStatus(deviceId);
+      
+      return {
+        deviceId,
+        deviceName: device.deviceName,
+        isConnected: connectionStatus.isConnected,
+        hasQR: connectionStatus.hasQR,
+        lastConnectedAt: device.lastConnectedAt,
+        retryInfo: retryStatus,
+        connectionDetails: connectionStatus
+      };
+    } catch (error) {
+      this.logger.error(`Error getting connection status for device ${deviceId}:`, error.message);
+      return {
+        deviceId,
+        deviceName: device.deviceName,
+        isConnected: false,
+        hasQR: false,
+        lastConnectedAt: device.lastConnectedAt,
+        retryInfo: this.baileysService.getDeviceRetryStatus(deviceId),
+        error: error.message
+      };
+    }
+  }
+  
+  async getConnectionInfo(userId: string, tenantId: string): Promise<any> {
+    const devices = await this.deviceModel.find({ userId, tenantId, isActive: true }).exec();
+    const connectedDevices = this.baileysService.getAllConnectedDevices();
+    
+    const deviceStatuses = await Promise.all(
+      devices.map(async (device) => {
+        try {
+          const status = await this.getDeviceConnectionStatus(device.deviceId, userId, tenantId);
+          return status;
+        } catch (error) {
+          return {
+            deviceId: device.deviceId,
+            deviceName: device.deviceName,
+            isConnected: false,
+            error: error.message
+          };
+        }
+      })
+    );
+    
+    return {
+      totalDevices: devices.length,
+      connectedDevices: connectedDevices.length,
+      deviceStatuses,
+      timestamp: new Date()
+    };
+  }
 }
