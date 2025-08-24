@@ -120,18 +120,63 @@ export class WhatsAppService {
       throw new NotFoundException('Device not found');
     }
 
-    if (!device.isConnected) {
-      throw new NotFoundException('Device not connected');
+    // Check actual connection status from BaileysService instead of database
+    try {
+      const connectionStatus = await this.baileysService.getConnectionStatus(sendMessageData.deviceId);
+      if (!connectionStatus.isConnected) {
+        throw new NotFoundException('Device not connected to WhatsApp. Please connect the device first.');
+      }
+    } catch (error) {
+      this.logger.error(`Error checking connection status for device ${sendMessageData.deviceId}:`, error.message);
+      throw new NotFoundException('Device not connected to WhatsApp. Please connect the device first.');
     }
 
-    const result = await this.baileysService.sendMessage(
-      sendMessageData.deviceId, 
-      sendMessageData.to, 
-      sendMessageData.message, 
-      sendMessageData.type || 'text'
-    );
+    // Retry mechanism for message sending
+    const maxRetries = 3;
+    let lastError: any;
     
-    return result;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        this.logger.log(`Sending message attempt ${attempt}/${maxRetries} for device ${sendMessageData.deviceId}`);
+        
+        const result = await this.baileysService.sendMessage(
+          sendMessageData.deviceId, 
+          sendMessageData.to, 
+          sendMessageData.message, 
+          sendMessageData.type || 'text'
+        );
+        
+        // Success - return result
+        return {
+          success: result?.success || false,
+          messageId: result?.messageId || undefined,
+          timestamp: result?.timestamp || new Date()
+        };
+        
+      } catch (error) {
+        lastError = error;
+        this.logger.warn(`Message send attempt ${attempt} failed for device ${sendMessageData.deviceId}: ${error.message}`);
+        
+        // Don't retry for certain errors
+        if (error.message.includes('not found') || 
+            error.message.includes('not connected') ||
+            error.message.includes('empty') ||
+            error.message.includes('Unsupported message type')) {
+          throw error;
+        }
+        
+        // Wait before retrying (exponential backoff)
+        if (attempt < maxRetries) {
+          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000); // Max 5 seconds
+          this.logger.log(`Waiting ${delay}ms before retry attempt ${attempt + 1}`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+    
+    // All retries failed
+    this.logger.error(`All ${maxRetries} attempts failed for device ${sendMessageData.deviceId}. Last error: ${lastError.message}`);
+    throw lastError;
   }
 
   async disconnectDevice(deviceId: string, userId: string, tenantId: string): Promise<{ success: boolean }> {
@@ -190,5 +235,75 @@ export class WhatsAppService {
     }
 
     return { success: true };
+  }
+  
+  async forceReconnectDevice(deviceId: string, userId: string, tenantId: string): Promise<{ success: boolean; message: string }> {
+    const device = await this.deviceModel.findOne({ deviceId, userId, tenantId }).exec();
+    if (!device) {
+      throw new NotFoundException('Device not found');
+    }
+
+    return await this.baileysService.forceReconnectDevice(deviceId, userId, tenantId);
+  }
+  
+  async getDeviceConnectionStatus(deviceId: string, userId: string, tenantId: string): Promise<any> {
+    const device = await this.deviceModel.findOne({ deviceId, userId, tenantId }).exec();
+    if (!device) {
+      throw new NotFoundException('Device not found');
+    }
+
+    try {
+      const connectionStatus = await this.baileysService.getConnectionStatus(deviceId);
+      const retryStatus = this.baileysService.getDeviceRetryStatus(deviceId);
+      
+      return {
+        deviceId,
+        deviceName: device.deviceName,
+        isConnected: connectionStatus.isConnected,
+        hasQR: connectionStatus.hasQR,
+        lastConnectedAt: device.lastConnectedAt,
+        retryInfo: retryStatus,
+        connectionDetails: connectionStatus
+      };
+    } catch (error) {
+      this.logger.error(`Error getting connection status for device ${deviceId}:`, error.message);
+      return {
+        deviceId,
+        deviceName: device.deviceName,
+        isConnected: false,
+        hasQR: false,
+        lastConnectedAt: device.lastConnectedAt,
+        retryInfo: this.baileysService.getDeviceRetryStatus(deviceId),
+        error: error.message
+      };
+    }
+  }
+  
+  async getConnectionInfo(userId: string, tenantId: string): Promise<any> {
+    const devices = await this.deviceModel.find({ userId, tenantId, isActive: true }).exec();
+    const connectedDevices = this.baileysService.getAllConnectedDevices();
+    
+    const deviceStatuses = await Promise.all(
+      devices.map(async (device) => {
+        try {
+          const status = await this.getDeviceConnectionStatus(device.deviceId, userId, tenantId);
+          return status;
+        } catch (error) {
+          return {
+            deviceId: device.deviceId,
+            deviceName: device.deviceName,
+            isConnected: false,
+            error: error.message
+          };
+        }
+      })
+    );
+    
+    return {
+      totalDevices: devices.length,
+      connectedDevices: connectedDevices.length,
+      deviceStatuses,
+      timestamp: new Date()
+    };
   }
 }

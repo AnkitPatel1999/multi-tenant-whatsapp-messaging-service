@@ -26,12 +26,20 @@ class BaileysLogger {
   child = (bindings: any) => new BaileysLogger(this.nestLogger);
 }
 
+interface RetryInfo {
+  count: number;
+  lastAttempt: Date;
+}
+
 @Injectable()
 export class BaileysService {
   private readonly logger = new Logger(BaileysService.name);
   private readonly baileysLogger = new BaileysLogger(this.logger);
   private connections = new Map<string, any>();
   private authStates = new Map<string, any>();
+  private retryInfo = new Map<string, RetryInfo>();
+  private readonly MAX_RETRY_ATTEMPTS = 5;
+  private readonly RETRY_DELAYS = [1000, 2000, 5000, 10000, 30000]; // Progressive delays in ms
 
   constructor(
     @InjectModel(WhatsAppDevice.name) private deviceModel: Model<WhatsAppDeviceDocument>,
@@ -73,12 +81,26 @@ export class BaileysService {
         browser: ['WhatsApp API', 'Chrome', '1.0.0'],
         connectTimeoutMs: 60_000,
         keepAliveIntervalMs: 30_000,
+        qrTimeout: 60_000, // 60 seconds for QR timeout
         auth: authState.state, // Use the state property which contains creds and keys
         generateHighQualityLinkPreview: true,
+        defaultQueryTimeoutMs: 60_000, // Increase query timeout
+        retryRequestDelayMs: 250, // Reduce retry delay
+        maxMsgRetryCount: 5, // Increase retry count
         getMessage: async (key) => {
           return {
             conversation: 'Hello World!',
           };
+        },
+        shouldSyncHistoryMessage: (msg) => {
+          // Only sync recent messages to reduce load
+          // Check if message has timestamp and is recent
+          if (msg && typeof msg === 'object' && 'timestamp' in msg) {
+            const messageAge = Date.now() - (msg.timestamp as number) * 1000;
+            return messageAge < 3 * 24 * 60 * 60 * 1000; // 3 days
+          }
+          // If no timestamp available, sync by default but limit to reduce load
+          return true;
         },
       });
 
@@ -104,15 +126,12 @@ export class BaileysService {
         }
 
         if (connection === 'close') {
-          const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
-          this.logger.log(`Connection closed due to ${lastDisconnect?.error}, reconnecting ${shouldReconnect}`);
-          
-          if (shouldReconnect) {
-            await this.reconnect(deviceId, userId, tenantId);
-          }
+          await this.handleConnectionClose(deviceId, userId, tenantId, lastDisconnect);
         } else if (connection === 'open') {
-          this.logger.log('Connection opened');
+          this.logger.log(`Connection opened successfully for device ${deviceId}`);
           await this.updateConnectionStatus(deviceId, true);
+          // Reset retry counter on successful connection
+          this.retryInfo.delete(deviceId);
           // Save auth state after successful connection
           await authState.saveCreds();
           
@@ -120,6 +139,8 @@ export class BaileysService {
           console.log('\n✅ WhatsApp Device Connected Successfully!');
           console.log(`📱 Device ID: ${deviceId}`);
           console.log('🚀 You can now send messages via API\n');
+        } else if (connection === 'connecting') {
+          this.logger.log(`Connecting device ${deviceId}...`);
         }
       });
 
@@ -229,46 +250,186 @@ export class BaileysService {
     }
   }
 
-  private async reconnect(deviceId: string, userId: string, tenantId: string): Promise<void> {
-    try {
-      const connection = this.connections.get(deviceId);
-      if (connection) {
-        await this.createConnection(deviceId, userId, tenantId);
+  private async handleConnectionClose(deviceId: string, userId: string, tenantId: string, lastDisconnect?: any): Promise<void> {
+    const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
+    const errorMessage = lastDisconnect?.error?.message || 'Unknown error';
+    
+    this.logger.warn(`Connection closed for device ${deviceId}. Status: ${statusCode}, Error: ${errorMessage}`);
+    
+    // Update device status to disconnected
+    await this.updateConnectionStatus(deviceId, false);
+    
+    // Clean up connection
+    this.connections.delete(deviceId);
+    
+    let shouldReconnect = false;
+    let reconnectDelay = 1000; // Default 1 second
+    
+    switch (statusCode) {
+      case DisconnectReason.loggedOut:
+        this.logger.error(`Device ${deviceId} was logged out. Manual re-authentication required.`);
+        await this.clearDeviceSession(deviceId);
+        // Don't reconnect - user needs to scan QR again
+        break;
+        
+      case DisconnectReason.connectionClosed:
+      case DisconnectReason.connectionLost:
+      case DisconnectReason.connectionReplaced:
+        this.logger.warn(`Device ${deviceId} connection lost. Attempting reconnect...`);
+        shouldReconnect = true;
+        reconnectDelay = 2000;
+        break;
+        
+      case DisconnectReason.timedOut:
+        this.logger.warn(`Device ${deviceId} connection timed out. Attempting reconnect...`);
+        shouldReconnect = true;
+        reconnectDelay = 5000;
+        break;
+        
+      case DisconnectReason.badSession:
+        this.logger.error(`Device ${deviceId} has bad session. Clearing and reconnecting...`);
+        await this.clearDeviceSession(deviceId);
+        shouldReconnect = true;
+        reconnectDelay = 3000;
+        break;
+        
+      case DisconnectReason.restartRequired:
+        this.logger.warn(`Device ${deviceId} requires restart. Reconnecting...`);
+        shouldReconnect = true;
+        reconnectDelay = 1000;
+        break;
+        
+      case DisconnectReason.multideviceMismatch:
+        this.logger.error(`Device ${deviceId} has multi-device mismatch. Clearing session...`);
+        await this.clearDeviceSession(deviceId);
+        shouldReconnect = true;
+        reconnectDelay = 5000;
+        break;
+        
+      default:
+        // Handle unknown errors - including "Connection Failure"
+        if (errorMessage.includes('Connection Failure') || errorMessage.includes('ENOTFOUND') || errorMessage.includes('ECONNREFUSED')) {
+          this.logger.warn(`Device ${deviceId} network connection failure. Will retry...`);
+          shouldReconnect = true;
+          reconnectDelay = 3000;
+        } else {
+          this.logger.error(`Device ${deviceId} unknown disconnect reason: ${statusCode} - ${errorMessage}`);
+          shouldReconnect = true;
+          reconnectDelay = 5000;
+        }
+        break;
+    }
+    
+    if (shouldReconnect) {
+      await this.scheduleReconnect(deviceId, userId, tenantId, reconnectDelay);
+    }
+  }
+  
+  private async scheduleReconnect(deviceId: string, userId: string, tenantId: string, baseDelay: number): Promise<void> {
+    const retryInfo = this.retryInfo.get(deviceId) || { count: 0, lastAttempt: new Date() };
+    
+    if (retryInfo.count >= this.MAX_RETRY_ATTEMPTS) {
+      this.logger.error(`Max retry attempts (${this.MAX_RETRY_ATTEMPTS}) reached for device ${deviceId}. Stopping reconnection attempts.`);
+      this.retryInfo.delete(deviceId);
+      return;
+    }
+    
+    const delay = Math.min(baseDelay * Math.pow(2, retryInfo.count), 60000); // Max 60 seconds
+    retryInfo.count++;
+    retryInfo.lastAttempt = new Date();
+    this.retryInfo.set(deviceId, retryInfo);
+    
+    this.logger.log(`Scheduling reconnect for device ${deviceId} in ${delay}ms (attempt ${retryInfo.count}/${this.MAX_RETRY_ATTEMPTS})`);
+    
+    setTimeout(async () => {
+      try {
+        await this.reconnectDevice(deviceId, userId, tenantId);
+      } catch (error) {
+        this.logger.error(`Scheduled reconnect failed for device ${deviceId}:`, error.message);
       }
+    }, delay);
+  }
+  
+  private async reconnectDevice(deviceId: string, userId: string, tenantId: string): Promise<void> {
+    try {
+      this.logger.log(`Attempting to reconnect device ${deviceId}...`);
+      await this.createConnection(deviceId, userId, tenantId);
     } catch (error) {
-      this.logger.error('Error reconnecting:', error);
+      this.logger.error(`Failed to reconnect device ${deviceId}:`, error.message);
+      throw error;
     }
   }
 
   async sendMessage(deviceId: string, to: string, message: string, type: 'text' | 'media' = 'text'): Promise<{ success: boolean; messageId?: string; timestamp: Date }> {
     const connection = this.connections.get(deviceId);
     if (!connection) {
-      throw new NotFoundException('Device not connected');
+      throw new NotFoundException(`WhatsApp connection not found for device ${deviceId}. Please connect the device first.`);
     }
 
     try {
+      // Validate the 'to' parameter (WhatsApp number format)
+      let formattedTo = to;
+      if (!to || !to.includes('@')) {
+        // Remove any + or spaces from phone number
+        const cleanNumber = to.replace(/[\s+]/g, '');
+        formattedTo = `${cleanNumber}@s.whatsapp.net`;
+      }
 
       let messageData: any;
       
       if (type === 'text') {
-        messageData = { text: message };
+        if (!message || message.trim() === '') {
+          throw new Error('Message content cannot be empty');
+        }
+        messageData = { text: message.trim() };
       } else if (type === 'media') {
         // Handle media messages
         messageData = { image: { url: message } };
+      } else {
+        throw new Error(`Unsupported message type: ${type}`);
       }
 
-      const result = await connection.sendMessage(to, messageData);
+      this.logger.log(`Sending message to ${formattedTo} from device ${deviceId}`);
       
-      // Log message
-      await this.logMessage(deviceId, to, message, type, 'sent');
+      // Use Promise.race to implement timeout with better error handling
+      const sendPromise = connection.sendMessage(formattedTo, messageData);
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Message send timeout after 30 seconds')), 30000);
+      });
+
+      const result = await Promise.race([sendPromise, timeoutPromise]);
+      
+      if (!result) {
+        throw new Error('Failed to send message - no response from WhatsApp');
+      }
+      
+      const messageId = result.key?.id;
+      this.logger.log(`Message sent successfully. MessageId: ${messageId}`);
+      
+      // Log message success
+      await this.logMessage(deviceId, formattedTo, message, type, 'sent');
       
       return {
         success: true,
-        messageId: result.key?.id,
+        messageId: messageId,
         timestamp: new Date()
       };
     } catch (error) {
-      this.logger.error('Error sending message:', error);
+      this.logger.error(`Error sending message from device ${deviceId} to ${to}:`, error.message);
+      
+      // Log failed message attempt
+      try {
+        await this.logMessage(deviceId, to, message, type, 'failed');
+      } catch (logError) {
+        this.logger.error('Error logging failed message:', logError.message);
+      }
+      
+      // For timeout errors, provide more specific error message
+      if (error.message.includes('timeout') || error.message.includes('Timed Out')) {
+        throw new Error('Message sending timed out. The device may be experiencing connectivity issues or WhatsApp servers are slow. Please try again.');
+      }
+      
+      // Throw the error to be handled by the calling service
       throw error;
     }
   }
@@ -364,8 +525,57 @@ export class BaileysService {
         }
         this.logger.log(`Cleared session files for device ${deviceId}`);
       }
+      
+      // Clear from memory as well
+      this.connections.delete(deviceId);
+      this.authStates.delete(deviceId);
+      this.retryInfo.delete(deviceId);
+      
     } catch (error) {
       this.logger.error(`Error clearing session for device ${deviceId}:`, error);
     }
+  }
+  
+  async forceReconnectDevice(deviceId: string, userId: string, tenantId: string): Promise<{ success: boolean; message: string }> {
+    try {
+      // Reset retry counter
+      this.retryInfo.delete(deviceId);
+      
+      // Disconnect existing connection if any
+      const existingConnection = this.connections.get(deviceId);
+      if (existingConnection) {
+        try {
+          existingConnection.end();
+        } catch (error) {
+          this.logger.warn(`Error ending existing connection for ${deviceId}:`, error.message);
+        }
+      }
+      
+      // Clear from memory
+      this.connections.delete(deviceId);
+      this.authStates.delete(deviceId);
+      
+      // Attempt new connection
+      await this.createConnection(deviceId, userId, tenantId);
+      
+      return {
+        success: true,
+        message: `Device ${deviceId} reconnection initiated successfully`
+      };
+    } catch (error) {
+      this.logger.error(`Force reconnect failed for device ${deviceId}:`, error.message);
+      return {
+        success: false,
+        message: `Failed to reconnect device: ${error.message}`
+      };
+    }
+  }
+  
+  getDeviceRetryStatus(deviceId: string): RetryInfo | null {
+    return this.retryInfo.get(deviceId) || null;
+  }
+  
+  getAllConnectedDevices(): string[] {
+    return Array.from(this.connections.keys());
   }
 }

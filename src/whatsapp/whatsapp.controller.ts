@@ -262,4 +262,89 @@ export class WhatsAppController {
       return response.status(HttpStatus.BAD_REQUEST).json(responseData);
     }
   }
+
+  @Post('devices/:deviceId/force-reconnect')
+  @RequirePermissions(PERMISSIONS.VIEW_LOGS)
+  async forceReconnectDevice(@Req() request, @Res() response, @Param('deviceId') deviceId: string) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string | null;
+    } = {
+      message: 'Something went wrong!',
+      data: {},
+      error: 0,
+      confidentialErrorMessage: null
+    }
+    try {
+      const result = await this.whatsappService.forceReconnectDevice(deviceId, request.user.userId, request.user.tenantId);
+      responseData.message = result.success ? 'Device reconnection initiated successfully' : 'Failed to initiate reconnection';
+      responseData.data = result;
+      responseData.error = result.success ? 0 : 1;
+      return response.status(result.success ? HttpStatus.OK : HttpStatus.BAD_REQUEST).json(responseData);
+    } catch (err) {
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to reconnect device!';
+      responseData.confidentialErrorMessage = err.message;
+      
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
+    }
+  }
+
+  @Get('devices/:deviceId/status')
+  @RequirePermissions(PERMISSIONS.VIEW_LOGS)
+  async getDeviceConnectionStatus(@Req() request, @Res() response, @Param('deviceId') deviceId: string) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string | null;
+    } = {
+      message: 'Something went wrong!',
+      data: {},
+      error: 0,
+      confidentialErrorMessage: null
+    }
+    try {
+      const status = await this.whatsappService.getDeviceConnectionStatus(deviceId, request.user.userId, request.user.tenantId);
+      responseData.message = 'Device status retrieved successfully';
+      responseData.data = status;
+      return response.status(HttpStatus.OK).json(responseData);
+    } catch (err) {
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to get device status!';
+      responseData.confidentialErrorMessage = err.message;
+      
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
+    }
+  }
+
+  @Get('connection-info')
+  @RequirePermissions(PERMISSIONS.VIEW_LOGS)
+  async getConnectionInfo(@Req() request, @Res() response) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string | null;
+    } = {
+      message: 'Something went wrong!',
+      data: {},
+      error: 0,
+      confidentialErrorMessage: null
+    }
+    try {
+      const info = await this.whatsappService.getConnectionInfo(request.user.userId, request.user.tenantId);
+      responseData.message = 'Connection info retrieved successfully';
+      responseData.data = info;
+      return response.status(HttpStatus.OK).json(responseData);
+    } catch (err) {
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to get connection info!';
+      responseData.confidentialErrorMessage = err.message;
+      
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
+    }
+  }
 }
