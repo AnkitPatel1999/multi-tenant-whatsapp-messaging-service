@@ -125,6 +125,28 @@ export class BaileysService {
 
       const sock = makeWASocket(socketConfig);
 
+      // Add general error handling (removed connection.error as it's not a valid event)
+
+      // Handle WebSocket close events to prevent unhandled rejections
+      if (sock.ws) {
+        sock.ws.on('error', (error) => {
+          console.error('🚫 [WEBSOCKET ERROR] WebSocket error:', {
+            deviceId,
+            error: error?.toString() || 'Unknown WebSocket error',
+            timestamp: new Date().toISOString()
+          });
+        });
+
+        sock.ws.on('close', (code, reason) => {
+          console.log('🔌 [WEBSOCKET CLOSE] WebSocket closed:', {
+            deviceId,
+            code,
+            reason: reason?.toString() || 'No reason provided',
+            timestamp: new Date().toISOString()
+          });
+        });
+      }
+
       // Handle contacts and chats events directly
       sock.ev.on('contacts.upsert', async (contacts) => {
         console.log('👥 [BAILEYS EVENT] contacts.upsert received:', {
@@ -134,7 +156,14 @@ export class BaileysService {
         });
         
         // Sync contacts directly from the event
-        await this.syncContactsFromEvent(deviceId, userId, tenantId, contacts);
+        try {
+          await this.syncContactsFromEvent(deviceId, userId, tenantId, contacts);
+        } catch (error) {
+          console.error('❌ [EVENT ERROR] Error syncing contacts from upsert event:', {
+            deviceId,
+            error: error.message
+          });
+        }
       });
 
       sock.ev.on('contacts.update', async (contacts) => {
@@ -145,7 +174,14 @@ export class BaileysService {
         });
         
         // Sync updated contacts
-        await this.syncContactsFromEvent(deviceId, userId, tenantId, contacts);
+        try {
+          await this.syncContactsFromEvent(deviceId, userId, tenantId, contacts);
+        } catch (error) {
+          console.error('❌ [EVENT ERROR] Error syncing contacts from update event:', {
+            deviceId,
+            error: error.message
+          });
+        }
       });
 
       sock.ev.on('chats.upsert', async (chats) => {
@@ -156,8 +192,15 @@ export class BaileysService {
         });
         
         // Process group chats for group sync and extract contacts
-        await this.syncGroupChatsFromEvent(deviceId, userId, tenantId, chats);
-        await this.extractContactsFromChats(deviceId, userId, tenantId, chats);
+        try {
+          await this.syncGroupChatsFromEvent(deviceId, userId, tenantId, chats);
+          await this.extractContactsFromChats(deviceId, userId, tenantId, chats);
+        } catch (error) {
+          console.error('❌ [EVENT ERROR] Error processing chats from upsert event:', {
+            deviceId,
+            error: error.message
+          });
+        }
       });
 
       sock.ev.on('chats.update', async (chats) => {
@@ -168,7 +211,14 @@ export class BaileysService {
         });
         
         // Extract contacts from chat updates
-        await this.extractContactsFromChats(deviceId, userId, tenantId, chats);
+        try {
+          await this.extractContactsFromChats(deviceId, userId, tenantId, chats);
+        } catch (error) {
+          console.error('❌ [EVENT ERROR] Error extracting contacts from chat updates:', {
+            deviceId,
+            error: error.message
+          });
+        }
       });
 
       // Handle connection events
@@ -229,7 +279,14 @@ export class BaileysService {
 
       // Handle credential updates
       sock.ev.on('creds.update', async () => {
-        await authState.saveCreds(); // Save credentials
+        try {
+          await authState.saveCreds(); // Save credentials
+        } catch (error) {
+          console.error('❌ [EVENT ERROR] Error saving credentials:', {
+            deviceId,
+            error: error.message
+          });
+        }
       });
 
       // Handle incoming messages
@@ -245,7 +302,14 @@ export class BaileysService {
             messageTypes: Object.keys(m.message || {})
           }))
         });
-        await this.handleIncomingMessages(deviceId, userId, tenantId, messageUpdate);
+        try {
+          await this.handleIncomingMessages(deviceId, userId, tenantId, messageUpdate);
+        } catch (error) {
+          console.error('❌ [EVENT ERROR] Error handling incoming messages:', {
+            deviceId,
+            error: error.message
+          });
+        }
       });
 
       // Handle message updates (delivery receipts, read receipts, etc.)
@@ -259,7 +323,14 @@ export class BaileysService {
             updateKeys: Object.keys(u.update || {})
           }))
         });
-        await this.handleMessageUpdates(deviceId, messageUpdates);
+        try {
+          await this.handleMessageUpdates(deviceId, messageUpdates);
+        } catch (error) {
+          console.error('❌ [EVENT ERROR] Error handling message updates:', {
+            deviceId,
+            error: error.message
+          });
+        }
       });
 
       // Handle message reactions
@@ -281,7 +352,14 @@ export class BaileysService {
             receiptType: r.receipt ? 'receipt' : 'unknown'
           }))
         });
-        await this.handleMessageReceipts(deviceId, receipts);
+        try {
+          await this.handleMessageReceipts(deviceId, receipts);
+        } catch (error) {
+          console.error('❌ [EVENT ERROR] Error handling message receipts:', {
+            deviceId,
+            error: error.message
+          });
+        }
       });
 
 
@@ -401,6 +479,33 @@ export class BaileysService {
         reconnectDelay = 5000;
         break;
         
+      case 440: // Conflict - session replaced
+        this.logger.error(`Device ${deviceId} session conflict: Session was replaced by another device/instance`);
+        console.log('🔄 [SESSION CONFLICT] WhatsApp session replaced by another device:', {
+          deviceId,
+          statusCode,
+          errorMessage,
+          solution: 'Close other WhatsApp instances or wait before reconnecting'
+        });
+        
+        // Don't reconnect immediately - wait longer to avoid repeated conflicts
+        shouldReconnect = true;
+        reconnectDelay = 30000; // Wait 30 seconds before retry
+        break;
+        
+      case 428: // Connection terminated after conflict
+        this.logger.warn(`Device ${deviceId} connection terminated after conflict. Waiting before reconnect...`);
+        console.log('⏸️ [SESSION CONFLICT] Connection terminated after conflict:', {
+          deviceId,
+          statusCode,
+          errorMessage,
+          waitTime: '30 seconds'
+        });
+        
+        shouldReconnect = true;
+        reconnectDelay = 30000; // Wait 30 seconds
+        break;
+
       default:
         // Handle unknown errors - including "Connection Failure" and Buffer errors
         if (errorMessage.includes('Connection Failure') || errorMessage.includes('ENOTFOUND') || errorMessage.includes('ECONNREFUSED')) {
@@ -412,6 +517,16 @@ export class BaileysService {
           await this.databaseAuthState.clearCorruptedSession(deviceId);
           shouldReconnect = true;
           reconnectDelay = 5000;
+        } else if (errorMessage.includes('Stream Errored (conflict)') || errorMessage.includes('conflict')) {
+          this.logger.error(`Device ${deviceId} stream conflict detected: ${errorMessage}`);
+          console.log('🚫 [SESSION CONFLICT] Stream conflict - session being used elsewhere:', {
+            deviceId,
+            statusCode,
+            errorMessage,
+            recommendation: 'Ensure only one instance is running'
+          });
+          shouldReconnect = true;
+          reconnectDelay = 30000; // Wait 30 seconds for conflict resolution
         } else {
           this.logger.error(`Device ${deviceId} unknown disconnect reason: ${statusCode} - ${errorMessage}`);
           shouldReconnect = true;

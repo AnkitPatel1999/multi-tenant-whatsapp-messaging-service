@@ -3,7 +3,7 @@ const bcrypt = require('bcrypt');
 const { v4: uuidv4 } = require('uuid');
 
 // const MONGODB_URI = process.env.DATABASE_URL;
-const MONGODB_URI = 'mongodb://localhost:27018/whatsapp-system'
+const MONGODB_URI = 'mongodb://localhost:27018/whatsapp-system1'
 
 async function seed() {
   const client = new MongoClient(MONGODB_URI);

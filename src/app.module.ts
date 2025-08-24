@@ -40,7 +40,7 @@ import { AppThrottlerModule } from './common/throttler/throttler.module';
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
         // process.env.MONGODB_URI || configService.get('database.url') ||
-        uri:  'mongodb://localhost:27018/whatsapp-system',
+        uri:  'mongodb://localhost:27018/whatsapp-system1',
         onConnectionCreate: (connection: Connection) => {
           connection.on('connected', () => console.log('MongoDB connected'));
           connection.on('open', () => console.log('MongoDB open'));
