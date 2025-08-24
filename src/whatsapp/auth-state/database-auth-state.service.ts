@@ -74,8 +74,9 @@ export class DatabaseAuthStateService {
           credsSession.encryptedData,
           credsSession.iv
         );
-        authState.state.creds = decryptedCreds;
-        this.logger.log(`Loaded credentials for device ${deviceId}`);
+        // Restore Buffers in credentials
+        authState.state.creds = this.restoreBuffers(decryptedCreds);
+        this.logger.log(`Loaded credentials for device ${deviceId} with Buffer restoration`);
       }
 
       // Load keys
@@ -97,7 +98,8 @@ export class DatabaseAuthStateService {
         if (!authState.state.keys[keyType]) {
           authState.state.keys[keyType] = {};
         }
-        authState.state.keys[keyType][keyId] = decryptedKey;
+        // Restore Buffers in keys
+        authState.state.keys[keyType][keyId] = this.restoreBuffers(decryptedKey);
       }
       
       this.logger.log(`Loaded ${keysSessions.length} keys for device ${deviceId}`);
@@ -216,14 +218,36 @@ export class DatabaseAuthStateService {
    */
   async clearDeviceSession(deviceId: string): Promise<void> {
     try {
-      await this.sessionModel.updateMany(
+      const result = await this.sessionModel.updateMany(
         { deviceId },
         { isActive: false }
       );
       
-      this.logger.log(`Cleared session data for device ${deviceId}`);
+      this.logger.log(`Cleared session data for device ${deviceId} (${result.modifiedCount} records updated)`);
     } catch (error) {
       this.logger.error(`Error clearing session for device ${deviceId}:`, error.message);
+    }
+  }
+
+  /**
+   * Clear corrupted session data that might contain malformed buffers
+   */
+  async clearCorruptedSession(deviceId: string): Promise<void> {
+    try {
+      // First, mark old sessions as inactive
+      await this.sessionModel.updateMany(
+        { deviceId },
+        { isActive: false }
+      );
+
+      // Delete the records entirely to ensure clean state
+      const result = await this.sessionModel.deleteMany(
+        { deviceId, isActive: false }
+      );
+      
+      this.logger.warn(`Cleared corrupted session data for device ${deviceId} (${result.deletedCount} records deleted)`);
+    } catch (error) {
+      this.logger.error(`Error clearing corrupted session for device ${deviceId}:`, error.message);
     }
   }
 
@@ -250,14 +274,22 @@ export class DatabaseAuthStateService {
    */
   async migrateFromFileAuth(deviceId: string, userId: string, tenantId: string, authState: any): Promise<void> {
     try {
-      // Save credentials
+      // Save credentials - ensure buffers are properly handled
       if (authState.creds && Object.keys(authState.creds).length > 0) {
+        // Buffers should already be in correct format from file auth, but ensure they're preserved
         await this.saveCredentials(deviceId, userId, tenantId, authState.creds);
       }
       
-      // Save keys
+      // Save keys - ensure buffers are properly handled
       if (authState.keys && Object.keys(authState.keys).length > 0) {
-        await this.saveKeys(deviceId, userId, tenantId, authState.keys);
+        // Filter out function properties before saving
+        const keysToSave = {};
+        for (const [keyType, keyGroup] of Object.entries(authState.keys)) {
+          if (keyType !== 'get' && keyType !== 'set' && typeof keyGroup === 'object') {
+            keysToSave[keyType] = keyGroup;
+          }
+        }
+        await this.saveKeys(deviceId, userId, tenantId, keysToSave);
       }
       
       this.logger.log(`Successfully migrated auth state to database for device ${deviceId}`);
@@ -294,5 +326,48 @@ export class DatabaseAuthStateService {
       this.logger.error(`Error getting session stats for device ${deviceId}:`, error.message);
       return {};
     }
+  }
+
+  /**
+   * Recursively restore Buffer objects from serialized data
+   * When JSON.stringify() is called on a Buffer, it becomes {type: 'Buffer', data: [array]}
+   * This method converts those objects back to actual Buffer instances
+   */
+  private restoreBuffers(obj: any): any {
+    if (!obj || typeof obj !== 'object') {
+      return obj;
+    }
+
+    // Check if this is a serialized Buffer
+    if (obj.type === 'Buffer' && Array.isArray(obj.data)) {
+      return Buffer.from(obj.data);
+    }
+
+    // Check if this is a Uint8Array (another way buffers can be serialized)
+    if (obj.constructor && obj.constructor.name === 'Object' && typeof obj.length === 'number' && obj.length >= 0) {
+      // Check if it looks like a typed array
+      const keys = Object.keys(obj);
+      if (keys.every(key => /^\d+$/.test(key) || key === 'length')) {
+        // Convert to Buffer if it looks like a byte array
+        const data = new Array(obj.length);
+        for (let i = 0; i < obj.length; i++) {
+          data[i] = obj[i];
+        }
+        return Buffer.from(data);
+      }
+    }
+
+    // If it's an array, recursively process each element
+    if (Array.isArray(obj)) {
+      return obj.map(item => this.restoreBuffers(item));
+    }
+
+    // If it's a plain object, recursively process each property
+    const result: any = {};
+    for (const [key, value] of Object.entries(obj)) {
+      result[key] = this.restoreBuffers(value);
+    }
+
+    return result;
   }
 }

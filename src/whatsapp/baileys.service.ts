@@ -10,6 +10,7 @@ import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { DatabaseAuthStateService } from './auth-state/database-auth-state.service';
 import { WhatsAppSyncService } from './sync/whatsapp-sync.service';
+import { WhatsAppMessageService } from './message/whatsapp-message.service';
 import * as qrcode from 'qrcode-terminal';
 
 // Create a custom logger that implements ILogger interface
@@ -47,6 +48,7 @@ export class BaileysService {
     @InjectModel(WhatsAppDevice.name) private deviceModel: Model<WhatsAppDeviceDocument>,
     private databaseAuthState: DatabaseAuthStateService,
     private whatsappSync: WhatsAppSyncService,
+    private whatsappMessageService: WhatsAppMessageService,
   ) {}
 
   async createConnection(deviceId: string, userId: string, tenantId: string): Promise<{ success: boolean; deviceId: string }> {
@@ -181,11 +183,27 @@ export class BaileysService {
         await authState.saveCreds(); // Save credentials
       });
 
-      // Handle messages
-      sock.ev.on('messages.upsert', async (m) => {
-        this.logger.log('New message received:', m);
-        // Handle incoming messages here
+      // Handle incoming messages
+      sock.ev.on('messages.upsert', async (messageUpdate) => {
+        await this.handleIncomingMessages(deviceId, userId, tenantId, messageUpdate);
       });
+
+      // Handle message updates (delivery receipts, read receipts, etc.)
+      sock.ev.on('messages.update', async (messageUpdates) => {
+        await this.handleMessageUpdates(deviceId, messageUpdates);
+      });
+
+      // Handle message reactions
+      sock.ev.on('messages.reaction', async (reactions) => {
+        this.logger.debug(`Message reactions received for device ${deviceId}:`, reactions);
+      });
+
+      // Handle message deletions
+      sock.ev.on('message-receipt.update', async (receipts) => {
+        await this.handleMessageReceipts(deviceId, receipts);
+      });
+
+
 
       // Store connection
       this.connections.set(deviceId, sock);
@@ -303,11 +321,16 @@ export class BaileysService {
         break;
         
       default:
-        // Handle unknown errors - including "Connection Failure"
+        // Handle unknown errors - including "Connection Failure" and Buffer errors
         if (errorMessage.includes('Connection Failure') || errorMessage.includes('ENOTFOUND') || errorMessage.includes('ECONNREFUSED')) {
           this.logger.warn(`Device ${deviceId} network connection failure. Will retry...`);
           shouldReconnect = true;
           reconnectDelay = 3000;
+        } else if (errorMessage.includes('Buffer') || errorMessage.includes('Uint8Array') || errorMessage.includes('ERR_INVALID_ARG_TYPE')) {
+          this.logger.error(`Device ${deviceId} buffer/data type error: ${errorMessage}. Clearing corrupted session data...`);
+          await this.databaseAuthState.clearCorruptedSession(deviceId);
+          shouldReconnect = true;
+          reconnectDelay = 5000;
         } else {
           this.logger.error(`Device ${deviceId} unknown disconnect reason: ${statusCode} - ${errorMessage}`);
           shouldReconnect = true;
@@ -402,6 +425,22 @@ export class BaileysService {
       const messageId = result.key?.id;
       this.logger.log(`Message sent successfully. MessageId: ${messageId}`);
       
+      // Store the outgoing message in database
+      if (messageId) {
+        // Get device info for user/tenant context
+        const device = await this.deviceModel.findOne({ deviceId }).exec();
+        if (device) {
+          await this.storeOutgoingMessage(
+            deviceId,
+            device.userId,
+            device.tenantId,
+            formattedTo,
+            messageData,
+            messageId
+          );
+        }
+      }
+
       // Log message success
       await this.logMessage(deviceId, formattedTo, message, type, 'sent');
       
@@ -645,5 +684,157 @@ export class BaileysService {
 
   getConnection(deviceId: string): any {
     return this.connections.get(deviceId);
+  }
+
+  /**
+   * Handle incoming messages and store them in database
+   */
+  private async handleIncomingMessages(deviceId: string, userId: string, tenantId: string, messageUpdate: any): Promise<void> {
+    try {
+      const { messages, type } = messageUpdate;
+      
+      if (type !== 'notify') {
+        return; // Only process new messages
+      }
+
+      for (const message of messages) {
+        if (!message.key || !message.message) {
+          continue;
+        }
+
+        // Skip messages from status broadcast
+        if (message.key.remoteJid === 'status@broadcast') {
+          continue;
+        }
+
+        // Determine message direction
+        const direction = message.key.fromMe ? 'outgoing' : 'incoming';
+        
+        // Parse and store the message
+        const parsedMessage = this.whatsappMessageService.parseMessage(
+          deviceId,
+          userId,
+          tenantId,
+          message,
+          direction
+        );
+
+        if (parsedMessage) {
+          await this.whatsappMessageService.storeMessage(parsedMessage);
+          
+          this.logger.debug(`Stored ${direction} message ${message.key.id} from ${message.key.remoteJid}`);
+        }
+      }
+    } catch (error) {
+      this.logger.error(`Error handling incoming messages for device ${deviceId}:`, error.message);
+    }
+  }
+
+  /**
+   * Handle message status updates (delivered, read, etc.)
+   */
+  private async handleMessageUpdates(deviceId: string, messageUpdates: any[]): Promise<void> {
+    try {
+      for (const update of messageUpdates) {
+        if (update.key && update.update) {
+          const messageId = update.key.id;
+          
+          // Determine status from update
+          let status = 'sent';
+          if (update.update.status) {
+            switch (update.update.status) {
+              case 1:
+                status = 'delivered';
+                break;
+              case 2:
+                status = 'read';
+                break;
+              case 3:
+                status = 'failed';
+                break;
+              default:
+                status = 'sent';
+            }
+          }
+
+          // Update message status in database
+          await this.whatsappMessageService.updateMessageStatus(deviceId, messageId, status);
+          
+          this.logger.debug(`Updated message ${messageId} status to ${status}`);
+        }
+      }
+    } catch (error) {
+      this.logger.error(`Error handling message updates for device ${deviceId}:`, error.message);
+    }
+  }
+
+  /**
+   * Handle message receipts
+   */
+  private async handleMessageReceipts(deviceId: string, receipts: any[]): Promise<void> {
+    try {
+      for (const receipt of receipts) {
+        if (receipt.key && receipt.receipt) {
+          const messageId = receipt.key.id;
+          const receiptType = receipt.receipt.type;
+          
+          let status = 'sent';
+          switch (receiptType) {
+            case 'delivery':
+              status = 'delivered';
+              break;
+            case 'read':
+              status = 'read';
+              break;
+          }
+
+          await this.whatsappMessageService.updateMessageStatus(deviceId, messageId, status);
+          
+          this.logger.debug(`Updated message ${messageId} receipt to ${status}`);
+        }
+      }
+    } catch (error) {
+      this.logger.error(`Error handling message receipts for device ${deviceId}:`, error.message);
+    }
+  }
+
+  /**
+   * Store outgoing message when sent via API
+   */
+  async storeOutgoingMessage(
+    deviceId: string,
+    userId: string,
+    tenantId: string,
+    to: string,
+    messageContent: any,
+    messageId: string
+  ): Promise<void> {
+    try {
+      // Create a Baileys-like message structure for parsing
+      const baileysMessage = {
+        key: {
+          id: messageId,
+          remoteJid: to,
+          fromMe: true
+        },
+        message: messageContent,
+        messageTimestamp: Math.floor(Date.now() / 1000)
+      };
+
+      const parsedMessage = this.whatsappMessageService.parseMessage(
+        deviceId,
+        userId,
+        tenantId,
+        baileysMessage,
+        'outgoing'
+      );
+
+      if (parsedMessage) {
+        await this.whatsappMessageService.storeMessage(parsedMessage);
+        this.logger.debug(`Stored outgoing message ${messageId} to ${to}`);
+      }
+    } catch (error) {
+      this.logger.error(`Error storing outgoing message:`, error.message);
+    }
   }
 }

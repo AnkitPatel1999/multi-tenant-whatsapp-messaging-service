@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Body, Param, UseGuards, Request, Res, Req, HttpStatus, Delete, Query } from '@nestjs/common';
 import { WhatsAppService } from './whatsapp.service';
+import { WhatsAppMessageService } from './message/whatsapp-message.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { TenantScope } from '../auth/decorators/tenant-scope.decorator';
 import { TenantScopeGuard } from '../auth/guards/tenant-scope.guard';
@@ -18,7 +19,10 @@ import {
 @UseGuards(JwtAuthGuard, TenantScopeGuard, PermissionGuard)
 @TenantScope()
 export class WhatsAppController {
-  constructor(private whatsappService: WhatsAppService) {}
+  constructor(
+    private whatsappService: WhatsAppService,
+    private whatsappMessageService: WhatsAppMessageService,
+  ) {}
 
   @Get('devices')
   @RequirePermissions(PERMISSIONS.VIEW_LOGS)
@@ -482,6 +486,175 @@ export class WhatsAppController {
     } catch (err) {
       responseData.error = 1;
       responseData.message = 'Error: Failed to get sync stats!';
+      responseData.confidentialErrorMessage = err.message;
+      
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
+    }
+  }
+
+  // Message Management Endpoints
+
+  @Get('devices/:deviceId/messages')
+  @RequirePermissions(PERMISSIONS.VIEW_LOGS)
+  async getDeviceMessages(
+    @Req() request, 
+    @Res() response, 
+    @Param('deviceId') deviceId: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('search') search?: string
+  ) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string;
+    } = {
+      message: '',
+      data: {},
+      error: 0,
+    };
+
+    try {
+      const limitNum = limit ? parseInt(limit) : 50;
+      const offsetNum = offset ? parseInt(offset) : 0;
+
+      let messages;
+      if (search) {
+        messages = await this.whatsappMessageService.searchMessages(
+          deviceId,
+          request.user.userId,
+          request.user.tenantId,
+          search,
+          limitNum
+        );
+      } else {
+        messages = await this.whatsappMessageService.getDeviceMessages(
+          deviceId,
+          request.user.userId,
+          request.user.tenantId,
+          limitNum,
+          offsetNum
+        );
+      }
+
+      responseData.message = 'Messages retrieved successfully';
+      responseData.data = messages;
+      return response.status(HttpStatus.OK).json(responseData);
+    } catch (err) {
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to get messages!';
+      responseData.confidentialErrorMessage = err.message;
+      
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
+    }
+  }
+
+  @Get('devices/:deviceId/chats/:chatId/messages')
+  @RequirePermissions(PERMISSIONS.VIEW_LOGS)
+  async getChatMessages(
+    @Req() request, 
+    @Res() response, 
+    @Param('deviceId') deviceId: string,
+    @Param('chatId') chatId: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string
+  ) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string;
+    } = {
+      message: '',
+      data: {},
+      error: 0,
+    };
+
+    try {
+      const limitNum = limit ? parseInt(limit) : 50;
+      const offsetNum = offset ? parseInt(offset) : 0;
+
+      const messages = await this.whatsappMessageService.getChatMessages(
+        deviceId,
+        chatId,
+        limitNum,
+        offsetNum
+      );
+
+      responseData.message = 'Chat messages retrieved successfully';
+      responseData.data = messages;
+      return response.status(HttpStatus.OK).json(responseData);
+    } catch (err) {
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to get chat messages!';
+      responseData.confidentialErrorMessage = err.message;
+      
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
+    }
+  }
+
+  @Get('devices/:deviceId/messages/stats')
+  @RequirePermissions(PERMISSIONS.VIEW_LOGS)
+  async getMessageStats(@Req() request, @Res() response, @Param('deviceId') deviceId: string) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string;
+    } = {
+      message: '',
+      data: {},
+      error: 0,
+    };
+
+    try {
+      const stats = await this.whatsappMessageService.getMessageStats(
+        deviceId,
+        request.user.userId,
+        request.user.tenantId
+      );
+
+      responseData.message = 'Message stats retrieved successfully';
+      responseData.data = stats;
+      return response.status(HttpStatus.OK).json(responseData);
+    } catch (err) {
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to get message stats!';
+      responseData.confidentialErrorMessage = err.message;
+      
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
+    }
+  }
+
+  @Post('devices/:deviceId/messages/:messageId/delete')
+  @RequirePermissions(PERMISSIONS.MANAGE_DEVICES)
+  async markMessageDeleted(
+    @Req() request, 
+    @Res() response, 
+    @Param('deviceId') deviceId: string,
+    @Param('messageId') messageId: string
+  ) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string;
+    } = {
+      message: '',
+      data: {},
+      error: 0,
+    };
+
+    try {
+      const result = await this.whatsappMessageService.markMessageDeleted(deviceId, messageId);
+
+      responseData.message = 'Message marked as deleted successfully';
+      responseData.data = result;
+      return response.status(HttpStatus.OK).json(responseData);
+    } catch (err) {
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to delete message!';
       responseData.confidentialErrorMessage = err.message;
       
       return response.status(HttpStatus.BAD_REQUEST).json(responseData);

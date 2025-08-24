@@ -6,10 +6,12 @@ import { WhatsAppDevice, WhatsAppDeviceSchema } from '../schema/whatsapp-device.
 import { WhatsAppSession, WhatsAppSessionSchema } from '../schema/whatsapp-session.schema';
 import { WhatsAppContact, WhatsAppContactSchema } from '../schema/whatsapp-contact.schema';
 import { WhatsAppGroup, WhatsAppGroupSchema } from '../schema/whatsapp-group.schema';
+import { WhatsAppMessage, WhatsAppMessageSchema } from '../schema/whatsapp-message.schema';
 import { MessageLog, MessageLogSchema } from '../schema/message-log.schema';
 import { BaileysService } from './baileys.service';
 import { DatabaseAuthStateService } from './auth-state/database-auth-state.service';
 import { WhatsAppSyncService } from './sync/whatsapp-sync.service';
+import { WhatsAppMessageService } from './message/whatsapp-message.service';
 import { EncryptionModule } from '../common/encryption/encryption.module';
 
 @Module({
@@ -19,6 +21,7 @@ import { EncryptionModule } from '../common/encryption/encryption.module';
       { name: WhatsAppSession.name, schema: WhatsAppSessionSchema },
       { name: WhatsAppContact.name, schema: WhatsAppContactSchema },
       { name: WhatsAppGroup.name, schema: WhatsAppGroupSchema },
+      { name: WhatsAppMessage.name, schema: WhatsAppMessageSchema },
       { name: MessageLog.name, schema: MessageLogSchema },
     ]),
     EncryptionModule,
@@ -27,14 +30,16 @@ import { EncryptionModule } from '../common/encryption/encryption.module';
     WhatsAppService, 
     BaileysService, 
     DatabaseAuthStateService,
-    WhatsAppSyncService
+    WhatsAppSyncService,
+    WhatsAppMessageService
   ],
   controllers: [WhatsAppController],
   exports: [
     WhatsAppService, 
     BaileysService, 
     DatabaseAuthStateService,
-    WhatsAppSyncService
+    WhatsAppSyncService,
+    WhatsAppMessageService
   ],
 })
 export class WhatsAppModule {}
