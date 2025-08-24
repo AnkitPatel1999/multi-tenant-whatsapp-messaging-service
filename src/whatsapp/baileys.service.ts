@@ -226,32 +226,60 @@ export class BaileysService {
   async sendMessage(deviceId: string, to: string, message: string, type: 'text' | 'media' = 'text'): Promise<{ success: boolean; messageId?: string; timestamp: Date }> {
     const connection = this.connections.get(deviceId);
     if (!connection) {
-      throw new NotFoundException('Device not connected');
+      throw new NotFoundException(`WhatsApp connection not found for device ${deviceId}. Please connect the device first.`);
     }
 
     try {
+      // Validate the 'to' parameter (WhatsApp number format)
+      if (!to || !to.includes('@')) {
+        // If no @ symbol, assume it's a phone number and format it
+        const formattedTo = to.includes('@') ? to : `${to}@s.whatsapp.net`;
+        to = formattedTo;
+      }
 
       let messageData: any;
       
       if (type === 'text') {
-        messageData = { text: message };
+        if (!message || message.trim() === '') {
+          throw new Error('Message content cannot be empty');
+        }
+        messageData = { text: message.trim() };
       } else if (type === 'media') {
         // Handle media messages
         messageData = { image: { url: message } };
+      } else {
+        throw new Error(`Unsupported message type: ${type}`);
       }
 
+      this.logger.log(`Sending message to ${to} from device ${deviceId}`);
       const result = await connection.sendMessage(to, messageData);
+      
+      if (!result) {
+        throw new Error('Failed to send message - no response from WhatsApp');
+      }
       
       // Log message
       await this.logMessage(deviceId, to, message, type, 'sent');
       
+      const messageId = result.key?.id;
+      this.logger.log(`Message sent successfully. MessageId: ${messageId}`);
+      
       return {
         success: true,
-        messageId: result.key?.id,
+        messageId: messageId,
         timestamp: new Date()
       };
     } catch (error) {
-      this.logger.error('Error sending message:', error);
+      this.logger.error(`Error sending message from device ${deviceId} to ${to}:`, error.message);
+      
+      // Log failed message attempt
+      try {
+        await this.logMessage(deviceId, to, message, type, 'failed');
+      } catch (logError) {
+        this.logger.error('Error logging failed message:', logError.message);
+      }
+      
+      // Throw the error to be handled by the calling service
       throw error;
     }
   }
