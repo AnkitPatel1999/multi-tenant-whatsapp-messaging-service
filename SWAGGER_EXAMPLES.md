@@ -32,7 +32,7 @@ export class AuthController {
         summary: 'Admin login example',
         value: {
           email: 'admin@example.com',
-          password: 'SecurePassword123!'
+          password: 'admin123'
         }
       },
       user: {
@@ -123,7 +123,7 @@ export class LoginDto {
 
   @ApiProperty({
     description: 'User password',
-    example: 'SecurePassword123!',
+    example: 'admin123',
     minLength: 8,
     format: 'password'
   })
@@ -691,7 +691,7 @@ export class CreateUserDto {
 
   @ApiProperty({
     description: 'User password - minimum 8 characters',
-    example: 'SecurePassword123!',
+    example: 'admin123',
     minLength: 8,
     format: 'password'
   })

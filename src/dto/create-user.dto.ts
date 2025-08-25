@@ -15,7 +15,7 @@ export class CreateUserDto {
 
   @ApiProperty({
     description: 'Password for the user account',
-    example: 'SecurePassword123!',
+    example: 'admin123',
     minLength: 8,
     format: 'password'
   })

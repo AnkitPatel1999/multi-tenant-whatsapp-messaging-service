@@ -6,7 +6,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - MONGODB_URI=mongodb://mongo:27017/alchemy
+      - MONGODB_URI=mongodb://mongo:27017/whatsapp-system3
     depends_on:
       - mongo
     networks:
