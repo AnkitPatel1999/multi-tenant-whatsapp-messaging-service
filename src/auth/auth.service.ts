@@ -11,8 +11,8 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
-  async validateUser(username: string, password: string): Promise<any> {
-    const user = await this.userService.findByUsername(username);
+  async validateUser(email: string, password: string): Promise<any> {
+    const user = await this.userService.findByEmail(email);
     if (user && await bcrypt.compare(password, user.password)) {
       // Convert Mongoose document to plain object and remove password
       const userObject = user.toObject ? user.toObject() : user;
@@ -24,7 +24,7 @@ export class AuthService {
 
   async login(user: any) {
     const payload = { 
-      username: user.username, 
+      email: user.email, 
       sub: user.userId, 
       tenantId: user.tenantId,
       groupId: user.groupId,
@@ -35,7 +35,7 @@ export class AuthService {
       access_token: this.jwtService.sign(payload),
       user: {
         userId: user.userId,
-        username: user.username,
+        email: user.email,
         tenantId: user.tenantId,
         groupId: user.groupId,
         isAdmin: user.isAdmin,
