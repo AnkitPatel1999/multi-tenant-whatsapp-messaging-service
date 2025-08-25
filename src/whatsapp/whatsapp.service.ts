@@ -15,6 +15,7 @@ import {
   WhatsAppQRResult 
 } from '../dto/whatsapp.dto';
 import * as QRCode from 'qrcode';
+import { WhatsAppMessageService } from './message/whatsapp-message.service';
 
 @Injectable()
 export class WhatsAppService {
@@ -26,6 +27,7 @@ export class WhatsAppService {
     private whatsappSync: WhatsAppSyncService,
     private messageQueueService: MessageQueueService,
     private cacheService: CacheService,
+    private whatsappMessageService: WhatsAppMessageService,
   ) {}
 
   async createDevice(createDeviceData: CreateDeviceData): Promise<WhatsAppDeviceDocument> {
@@ -236,6 +238,26 @@ export class WhatsAppService {
           sendMessageData.message, 
           sendMessageData.type || 'text'
         );
+        
+        // Store the sent message in the database
+        try {
+          await this.whatsappMessageService.storeMessage({
+            messageId: result?.messageId || `MSG_${Date.now()}`,
+            deviceId: sendMessageData.deviceId,
+            chatId: sendMessageData.to,
+            textContent: sendMessageData.message,
+            messageType: sendMessageData.type || 'text',
+            direction: 'outgoing',
+            userId: sendMessageData.userId,
+            tenantId: sendMessageData.tenantId,
+            timestamp: result?.timestamp || new Date(),
+            status: 'sent',
+            isActive: true
+          });
+        } catch (storeError) {
+          this.logger.warn(`Failed to store sent message: ${storeError.message}`);
+          // Don't fail the send operation if storage fails
+        }
         
         // Success - return result
         return {

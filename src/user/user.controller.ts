@@ -316,7 +316,7 @@ export class UserController {
     }
   }
 
-  @Put(':userId/group')
+  @Post(':userId/group')
   @RequirePermissions(PERMISSIONS.ASSIGN_USERS_TO_GROUPS)
   @ApiOperation({
     summary: 'Assign user to group',
@@ -406,6 +406,7 @@ export class UserController {
       error: 0,
       confidentialErrorMessage: null
     }
+
     try {
       const user = await this.userService.assignUserToGroup(userId, body.groupId, request.user.tenantId);
       responseData.message = 'User assigned to group successfully';

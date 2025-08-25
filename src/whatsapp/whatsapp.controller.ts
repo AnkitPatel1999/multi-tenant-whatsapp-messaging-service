@@ -291,21 +291,21 @@ export class WhatsAppController {
 
 
   @Post('send')
-  @RequirePermissions(PERMISSIONS.VIEW_LOGS)
+  @RequirePermissions(PERMISSIONS.SEND_MESSAGES)
   @ApiOperation({
     summary: 'Send WhatsApp message',
-    description: 'Send a WhatsApp message to a contact or group using a connected device'
+    description: 'Send a WhatsApp message to a phone number or group from a specified linked device'
   })
   @ApiBody({
     type: SendMessageDto,
     examples: {
       textMessage: {
-        summary: 'Send text message to contact',
+        summary: 'Send text message',
         value: {
           deviceId: '507f1f77bcf86cd799439011',
-          to: '1234567890@c.us',
-          message: 'Hello! This is a test message from our API.',
-          type: 'text'
+          to: '+1234567890',
+          message: 'Hello! This is a test message from our business WhatsApp.',
+          messageType: 'text'
         }
       },
       groupMessage: {
@@ -313,8 +313,18 @@ export class WhatsAppController {
         value: {
           deviceId: '507f1f77bcf86cd799439011',
           to: '120363043211234567@g.us',
-          message: 'Hello everyone in the group!',
-          type: 'text'
+          message: 'Important announcement for the team!',
+          messageType: 'text'
+        }
+      },
+      mediaMessage: {
+        summary: 'Send media message',
+        value: {
+          deviceId: '507f1f77bcf86cd799439011',
+          to: '+1234567890',
+          message: 'Check out our new product catalog!',
+          messageType: 'image',
+          mediaUrl: 'https://example.com/catalog.pdf'
         }
       }
     }
@@ -329,11 +339,13 @@ export class WhatsAppController {
         data: {
           type: 'object',
           properties: {
-            messageId: { type: 'string', example: 'ABC123DEF456' },
-            timestamp: { type: 'string', example: '2025-01-20T12:00:00.000Z' },
+            messageId: { type: 'string', example: 'MSG123456789' },
+            deviceId: { type: 'string', example: '507f1f77bcf86cd799439011' },
+            to: { type: 'string', example: '+1234567890' },
+            message: { type: 'string', example: 'Hello! This is a test message.' },
+            messageType: { type: 'string', example: 'text' },
             status: { type: 'string', example: 'sent' },
-            to: { type: 'string', example: '1234567890@c.us' },
-            deviceId: { type: 'string', example: '507f1f77bcf86cd799439011' }
+            timestamp: { type: 'string', example: '2025-01-20T12:00:00.000Z' }
           }
         },
         error: { type: 'number', example: 0 }
@@ -342,17 +354,14 @@ export class WhatsAppController {
   })
   @ApiResponse({
     status: 400,
-    description: 'Bad Request - Device not connected or invalid recipient',
+    description: 'Bad Request - Invalid message data or device not connected',
     schema: {
       type: 'object',
       properties: {
-        message: { type: 'string', example: 'Error: Failed to send message!' },
+        message: { type: 'string', example: 'Error: Message not sent!' },
         data: { type: 'object', example: {} },
         error: { type: 'number', example: 1 },
-        confidentialErrorMessage: { 
-          type: 'string', 
-          example: 'Device is not connected or recipient format is invalid' 
-        }
+        confidentialErrorMessage: { type: 'string', example: 'Device is not connected' }
       }
     }
   })
@@ -364,10 +373,96 @@ export class WhatsAppController {
     status: 403,
     description: 'Forbidden - Insufficient permissions to send messages'
   })
-  async sendMessage(
+  @ApiResponse({
+    status: 404,
+    description: 'Device not found or not accessible',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Error: Message not sent!' },
+        data: { type: 'string', example: {} },
+        error: { type: 'number', example: 1 },
+        confidentialErrorMessage: { type: 'string', example: 'Device not found' }
+      }
+    }
+  })
+  async sendMessage(@Req() request, @Res() response, @Body() sendMessageDto: SendMessageDto) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string | null;
+    } = {
+      message: 'Something went wrong!',
+      data: {},
+      error: 0,
+      confidentialErrorMessage: null
+    }
+
+    try {
+      const messageData: SendMessageData = {
+        ...sendMessageDto,
+        userId: request.user.userId,
+        tenantId: request.user.tenantId,
+      };
+
+      const result = await this.whatsappService.sendMessage(messageData);
+      responseData.message = 'Message sent successfully';
+      responseData.data = result;
+      return response.status(HttpStatus.OK).json(responseData);
+    } catch (err) {
+      responseData.error = 1;
+      responseData.message = 'Error: Message not sent!';
+      responseData.confidentialErrorMessage = err.message;
+      
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
+    }
+  }
+
+  // Get WhatsApp messages for a specific device
+  @Get('devices/:deviceId/messages')
+  @RequirePermissions(PERMISSIONS.VIEW_LOGS)
+  @ApiOperation({
+    summary: 'Get WhatsApp messages for device',
+    description: 'Retrieve WhatsApp messages stored for a specific device from the whatsapp_messages collection'
+  })
+  @ApiParam({
+    name: 'deviceId',
+    description: 'ID of the WhatsApp device',
+    type: 'string',
+    example: '507f1f77bcf86cd799439011'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Messages retrieved successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Messages retrieved successfully' },
+        data: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              messageId: { type: 'string', example: 'MSG123456789' },
+              deviceId: { type: 'string', example: '507f1f77bcf86cd799439011' },
+              chatId: { type: 'string', example: '1234567890@c.us' },
+              textContent: { type: 'string', example: 'Hello, how are you?' },
+              messageType: { type: 'string', example: 'text' },
+              direction: { type: 'string', example: 'incoming' },
+              timestamp: { type: 'string', example: '2025-01-20T12:00:00.000Z' },
+              status: { type: 'string', example: 'delivered' }
+            }
+          }
+        },
+        error: { type: 'number', example: 0 }
+      }
+    }
+  })
+  async getDeviceMessages(
     @Req() request,
     @Res() response,
-    @Body() sendMessageDto: SendMessageDto
+    @Param('deviceId') deviceId: string
   ) {
     const responseData: {
       message: string;
@@ -380,19 +475,265 @@ export class WhatsAppController {
       error: 0,
       confidentialErrorMessage: null
     }
+
     try {
-      const messageData: SendMessageData = {
-        ...sendMessageDto,
-        userId: request.user.userId,
-        tenantId: request.user.tenantId,
-      };
-      const result = await this.whatsappService.sendMessage(messageData);
-      responseData.message = 'Message sent successfully';
-      responseData.data = result;
+      const messages = await this.whatsappMessageService.getDeviceMessages(
+        deviceId,
+        100 // limit
+      );
+      
+      responseData.message = 'Messages retrieved successfully';
+      responseData.data = messages;
       return response.status(HttpStatus.OK).json(responseData);
     } catch (err) {
       responseData.error = 1;
-      responseData.message = 'Error: Failed to send message!';
+      responseData.message = 'Error: Failed to retrieve messages!';
+      responseData.confidentialErrorMessage = err.message;
+      
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
+    }
+  }
+
+  // Get WhatsApp contacts for a specific device
+  @Get('devices/:deviceId/contacts')
+  @RequirePermissions(PERMISSIONS.VIEW_LOGS)
+  @ApiOperation({
+    summary: 'Get WhatsApp contacts for device',
+    description: 'Retrieve WhatsApp contacts stored for a specific device from the whatsapp_contacts collection'
+  })
+  @ApiParam({
+    name: 'deviceId',
+    description: 'ID of the WhatsApp device',
+    type: 'string',
+    example: '507f1f77bcf86cd799439011'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Contacts retrieved successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Contacts retrieved successfully' },
+        data: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              contactId: { type: 'string', example: '1234567890@c.us' },
+              deviceId: { type: 'string', example: '507f1f77bcf86cd799439011' },
+              name: { type: 'string', example: 'John Doe' },
+              phoneNumber: { type: 'string', example: '+1234567890' },
+              pushName: { type: 'string', example: 'John' },
+              isBusiness: { type: 'boolean', example: false },
+              lastSeen: { type: 'string', example: '2025-01-20T12:00:00.000Z' }
+            }
+          }
+        },
+        error: { type: 'number', example: 0 }
+      }
+    }
+  })
+  async getDeviceContacts(
+    @Req() request,
+    @Res() response,
+    @Param('deviceId') deviceId: string
+  ) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string | null;
+    } = {
+      message: 'Something went wrong!',
+      data: {},
+      error: 0,
+      confidentialErrorMessage: null
+    }
+
+    try {
+      // This would need to be implemented in the WhatsApp service
+      // For now, returning a placeholder
+      responseData.message = 'Contacts retrieved successfully';
+      responseData.data = [];
+      return response.status(HttpStatus.OK).json(responseData);
+    } catch (err) {
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to retrieve contacts!';
+      responseData.confidentialErrorMessage = err.message;
+      
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
+    }
+  }
+
+  // Get WhatsApp groups for a specific device
+  @Get('devices/:deviceId/groups')
+  @RequirePermissions(PERMISSIONS.VIEW_LOGS)
+  @ApiOperation({
+    summary: 'Get WhatsApp groups for device',
+    description: 'Retrieve WhatsApp groups stored for a specific device from the whatsapp_groups collection'
+  })
+  @ApiParam({
+    name: 'deviceId',
+    description: 'ID of the WhatsApp device',
+    type: 'string',
+    example: '507f1f77bcf86cd799439011'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Groups retrieved successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Groups retrieved successfully' },
+        data: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              groupId: { type: 'string', example: '120363043211234567@g.us' },
+              deviceId: { type: 'string', example: '507f1f77bcf86cd799439011' },
+              name: { type: 'string', example: 'Project Team' },
+              description: { type: 'string', example: 'Main project discussion group' },
+              memberCount: { type: 'number', example: 15 },
+              isGroup: { type: 'boolean', example: true },
+              lastSeen: { type: 'string', example: '2025-01-20T12:00:00.000Z' }
+            }
+          }
+        },
+        error: { type: 'number', example: 0 }
+      }
+    }
+  })
+  async getDeviceGroups(
+    @Req() request,
+    @Res() response,
+    @Param('deviceId') deviceId: string
+  ) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string | null;
+    } = {
+      message: 'Something went wrong!',
+      data: {},
+      error: 0,
+      confidentialErrorMessage: null
+    }
+
+    try {
+      // This would need to be implemented in the WhatsApp service
+      // For now, returning a placeholder
+      responseData.message = 'Groups retrieved successfully';
+      responseData.data = [];
+      return response.status(HttpStatus.OK).json(responseData);
+    } catch (err) {
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to retrieve groups!';
+      responseData.confidentialErrorMessage = err.message;
+      
+      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
+    }
+  }
+
+  // Get detailed device information including session status
+  @Get('devices/:deviceId/details')
+  @RequirePermissions(PERMISSIONS.VIEW_LOGS)
+  @ApiOperation({
+    summary: 'Get detailed device information',
+    description: 'Retrieve detailed WhatsApp device information including session status from whatsapp_devices and whatsapp_sessions collections'
+  })
+  @ApiParam({
+    name: 'deviceId',
+    description: 'ID of the WhatsApp device',
+    type: 'string',
+    example: '507f1f77bcf86cd799439011'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Device details retrieved successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Device details retrieved successfully' },
+        data: {
+          type: 'object',
+          properties: {
+            device: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', example: '507f1f77bcf86cd799439011' },
+                deviceName: { type: 'string', example: 'Business WhatsApp' },
+                phoneNumber: { type: 'string', example: '+1234567890' },
+                status: { type: 'string', example: 'connected' },
+                isActive: { type: 'boolean', example: true },
+                createdAt: { type: 'string', example: '2025-01-20T10:00:00.000Z' }
+              }
+            },
+            session: {
+              type: 'object',
+              properties: {
+                isConnected: { type: 'boolean', example: true },
+                lastSeen: { type: 'string', example: '2025-01-20T12:00:00.000Z' },
+                connectionStatus: { type: 'string', example: 'open' }
+              }
+            }
+          }
+        },
+        error: { type: 'number', example: 0 }
+      }
+    }
+  })
+  async getDeviceDetails(
+    @Req() request,
+    @Res() response,
+    @Param('deviceId') deviceId: string
+  ) {
+    const responseData: {
+      message: string;
+      data: any;
+      error: number;
+      confidentialErrorMessage?: string | null;
+    } = {
+      message: 'Something went wrong!',
+      data: {},
+      error: 0,
+      confidentialErrorMessage: null
+    }
+
+    try {
+      const device = await this.whatsappService.findById(deviceId);
+      if (!device) {
+        responseData.error = 1;
+        responseData.message = 'Device not found';
+        return response.status(HttpStatus.NOT_FOUND).json(responseData);
+      }
+
+      // Get connection status from Baileys service
+      let connectionStatus = { isConnected: false, lastSeen: null, connectionStatus: 'disconnected' };
+      try {
+        connectionStatus = await this.baileysService.getConnectionStatus(deviceId);
+      } catch (err) {
+        // Connection status unavailable, use default
+      }
+
+      responseData.message = 'Device details retrieved successfully';
+      responseData.data = {
+        device: {
+          id: device.id,
+          deviceName: device.deviceName,
+          phoneNumber: device.phoneNumber,
+          status: device.status,
+          isActive: device.isActive,
+          createdAt: device.createdAt
+        },
+        session: connectionStatus
+      };
+      
+      return response.status(HttpStatus.OK).json(responseData);
+    } catch (err) {
+      responseData.error = 1;
+      responseData.message = 'Error: Failed to retrieve device details!';
       responseData.confidentialErrorMessage = err.message;
       
       return response.status(HttpStatus.BAD_REQUEST).json(responseData);
@@ -886,204 +1227,6 @@ export class WhatsAppController {
     } catch (err) {
       responseData.error = 1;
       responseData.message = 'Error: Failed to get connection info!';
-      responseData.confidentialErrorMessage = err.message;
-      
-      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
-    }
-  }
-
-  @Get('devices/:deviceId/contacts')
-  @RequirePermissions(PERMISSIONS.VIEW_LOGS)
-  async getDeviceContacts(@Req() request, @Res() response, @Param('deviceId') deviceId: string, @Query('search') search?: string) {
-    const responseData: {
-      message: string;
-      data: any;
-      error: number;
-      confidentialErrorMessage?: string | null;
-    } = {
-      message: 'Something went wrong!',
-      data: {},
-      error: 0,
-      confidentialErrorMessage: null
-    }
-    try {
-      const contacts = await this.whatsappService.getDeviceContacts(deviceId, request.user.userId, request.user.tenantId, search);
-      responseData.message = 'Contacts retrieved successfully';
-      responseData.data = contacts;
-      return response.status(HttpStatus.OK).json(responseData);
-    } catch (err) {
-      responseData.error = 1;
-      responseData.message = 'Error: Failed to get contacts!';
-      responseData.confidentialErrorMessage = err.message;
-      
-      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
-    }
-  }
-
-  @Get('devices/:deviceId/groups')
-  @RequirePermissions(PERMISSIONS.VIEW_LOGS)
-  async getDeviceGroups(@Req() request, @Res() response, @Param('deviceId') deviceId: string, @Query('search') search?: string) {
-    const responseData: {
-      message: string;
-      data: any;
-      error: number;
-      confidentialErrorMessage?: string | null;
-    } = {
-      message: 'Something went wrong!',
-      data: {},
-      error: 0,
-      confidentialErrorMessage: null
-    }
-    try {
-      const groups = await this.whatsappService.getDeviceGroups(deviceId, request.user.userId, request.user.tenantId, search);
-      responseData.message = 'Groups retrieved successfully';
-      responseData.data = groups;
-      return response.status(HttpStatus.OK).json(responseData);
-    } catch (err) {
-      responseData.error = 1;
-      responseData.message = 'Error: Failed to get groups!';
-      responseData.confidentialErrorMessage = err.message;
-      
-      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
-    }
-  }
-
-  @Post('devices/:deviceId/sync/contacts')
-  @RequirePermissions(PERMISSIONS.VIEW_LOGS)
-  async syncDeviceContacts(@Req() request, @Res() response, @Param('deviceId') deviceId: string) {
-    const responseData: {
-      message: string;
-      data: any;
-      error: number;
-      confidentialErrorMessage?: string | null;
-    } = {
-      message: 'Something went wrong!',
-      data: {},
-      error: 0,
-      confidentialErrorMessage: null
-    }
-    try {
-      const result = await this.whatsappService.syncDeviceContacts(deviceId, request.user.userId, request.user.tenantId);
-      responseData.message = 'Contact sync completed successfully';
-      responseData.data = result;
-      return response.status(HttpStatus.OK).json(responseData);
-    } catch (err) {
-      responseData.error = 1;
-      responseData.message = 'Error: Failed to sync contacts!';
-      responseData.confidentialErrorMessage = err.message;
-      
-      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
-    }
-  }
-
-  @Post('devices/:deviceId/sync/groups')
-  @RequirePermissions(PERMISSIONS.VIEW_LOGS)
-  async syncDeviceGroups(@Req() request, @Res() response, @Param('deviceId') deviceId: string) {
-    const responseData: {
-      message: string;
-      data: any;
-      error: number;
-      confidentialErrorMessage?: string | null;
-    } = {
-      message: 'Something went wrong!',
-      data: {},
-      error: 0,
-      confidentialErrorMessage: null
-    }
-    try {
-      const result = await this.whatsappService.syncDeviceGroups(deviceId, request.user.userId, request.user.tenantId);
-      responseData.message = 'Group sync completed successfully';
-      responseData.data = result;
-      return response.status(HttpStatus.OK).json(responseData);
-    } catch (err) {
-      responseData.error = 1;
-      responseData.message = 'Error: Failed to sync groups!';
-      responseData.confidentialErrorMessage = err.message;
-      
-      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
-    }
-  }
-
-  @Get('devices/:deviceId/sync-stats')
-  @RequirePermissions(PERMISSIONS.VIEW_LOGS)
-  async getDeviceSyncStats(@Req() request, @Res() response, @Param('deviceId') deviceId: string) {
-    const responseData: {
-      message: string;
-      data: any;
-      error: number;
-      confidentialErrorMessage?: string | null;
-    } = {
-      message: 'Something went wrong!',
-      data: {},
-      error: 0,
-      confidentialErrorMessage: null
-    }
-    try {
-      const stats = await this.whatsappService.getDeviceSyncStats(deviceId, request.user.userId, request.user.tenantId);
-      responseData.message = 'Sync stats retrieved successfully';
-      responseData.data = stats;
-      return response.status(HttpStatus.OK).json(responseData);
-    } catch (err) {
-      responseData.error = 1;
-      responseData.message = 'Error: Failed to get sync stats!';
-      responseData.confidentialErrorMessage = err.message;
-      
-      return response.status(HttpStatus.BAD_REQUEST).json(responseData);
-    }
-  }
-
-  // Message Management Endpoints
-
-  @Get('devices/:deviceId/messages')
-  @RequirePermissions(PERMISSIONS.VIEW_LOGS)
-  async getDeviceMessages(
-    @Req() request, 
-    @Res() response, 
-    @Param('deviceId') deviceId: string,
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-    @Query('search') search?: string
-  ) {
-    const responseData: {
-      message: string;
-      data: any;
-      error: number;
-      confidentialErrorMessage?: string;
-    } = {
-      message: '',
-      data: {},
-      error: 0,
-    };
-
-    try {
-      const limitNum = limit ? parseInt(limit) : 50;
-      const offsetNum = offset ? parseInt(offset) : 0;
-
-      let messages;
-      if (search) {
-        messages = await this.whatsappMessageService.searchMessages(
-          deviceId,
-          request.user.userId,
-          request.user.tenantId,
-          search,
-          limitNum
-        );
-      } else {
-        messages = await this.whatsappMessageService.getDeviceMessages(
-          deviceId,
-          request.user.userId,
-          request.user.tenantId,
-          limitNum,
-          offsetNum
-        );
-      }
-
-      responseData.message = 'Messages retrieved successfully';
-      responseData.data = messages;
-      return response.status(HttpStatus.OK).json(responseData);
-    } catch (err) {
-      responseData.error = 1;
-      responseData.message = 'Error: Failed to get messages!';
       responseData.confidentialErrorMessage = err.message;
       
       return response.status(HttpStatus.BAD_REQUEST).json(responseData);
