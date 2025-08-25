@@ -117,11 +117,35 @@ export class WhatsAppService {
     }
 
     try {
-      // Create or reconnect to get fresh QR code
+      // Check if device is already connected
+      const currentStatus = await this.baileysService.getConnectionStatus(deviceId);
+      
+      if (currentStatus.isConnected) {
+        // Device is already connected, return error
+        throw new Error('Device is already connected to WhatsApp. Cannot generate QR code for connected device.');
+      }
+
+      // Force disconnect any existing connection first
+      try {
+        await this.baileysService.disconnectConnection(deviceId);
+        this.logger.log(`Force disconnected device ${deviceId} before generating new QR code`);
+      } catch (disconnectError) {
+        this.logger.warn(`Could not disconnect device ${deviceId} before QR generation: ${disconnectError.message}`);
+      }
+
+      // Clear any existing session data
+      try {
+        await this.baileysService.clearDeviceSession(deviceId);
+        this.logger.log(`Cleared session data for device ${deviceId}`);
+      } catch (clearError) {
+        this.logger.warn(`Could not clear session for device ${deviceId}: ${clearError.message}`);
+      }
+
+      // Create fresh connection to get new QR code
       await this.baileysService.createConnection(deviceId, userId, tenantId);
       
       // Wait a bit for QR generation
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 3000));
       
       const status = await this.baileysService.getConnectionStatus(deviceId);
       
@@ -252,7 +276,9 @@ export class WhatsAppService {
             tenantId: sendMessageData.tenantId,
             timestamp: result?.timestamp || new Date(),
             status: 'sent',
-            isActive: true
+            isActive: true,
+            fromJid: sendMessageData.deviceId, // Device ID as sender
+            toJid: sendMessageData.to // Recipient
           });
         } catch (storeError) {
           this.logger.warn(`Failed to store sent message: ${storeError.message}`);
@@ -393,19 +419,47 @@ export class WhatsAppService {
       throw new NotFoundException('Device not found');
     }
 
-    // Disconnect from Baileys
-    await this.baileysService.disconnectConnection(deviceId);
-    
-    // Update device status
-    device.isConnected = false;
-    device.lastConnectedAt = new Date();
-    await device.save();
-    
-    return { success: true };
+    try {
+      // Disconnect from Baileys
+      await this.baileysService.disconnectConnection(deviceId);
+      
+      // Clear any cached connection status
+      await this.cacheService.del(`device_status:${deviceId}`);
+      
+      // Update device status in database
+      device.isConnected = false;
+      device.lastConnectedAt = new Date();
+      device.qrCode = undefined; // Clear any existing QR code
+      device.qrExpiry = undefined; // Clear QR expiry
+      await device.save();
+      
+      this.logger.log(`Device ${deviceId} disconnected successfully and status updated`);
+      
+      return { success: true };
+    } catch (error) {
+      this.logger.error(`Error disconnecting device ${deviceId}:`, error.message);
+      
+      // Even if Baileys disconnect fails, update database status
+      device.isConnected = false;
+      device.lastConnectedAt = new Date();
+      await device.save();
+      
+      throw error;
+    }
   }
 
-  async findById(deviceId: string): Promise<WhatsAppDeviceDocument | null> {
-    return await this.deviceModel.findOne({ deviceId }).exec();
+  async findById(deviceId: string, userId?: string, tenantId?: string): Promise<WhatsAppDeviceDocument | null> {
+    const filter: any = { deviceId };
+    
+    if (userId) {
+      filter.userId = userId;
+    }
+    
+    if (tenantId) {
+      filter.tenantId = tenantId;
+    }
+    console.log( "filter" ,filter)
+    return await this.deviceModel.findOne(filter).exec();
   }
 
   async deleteDevice(deviceId: string, userId: string, tenantId: string): Promise<{ success: boolean }> {

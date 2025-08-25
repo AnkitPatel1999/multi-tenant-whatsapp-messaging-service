@@ -400,11 +400,33 @@ export class WhatsAppController {
     }
 
     try {
+
+      
+      if (!request.user) {
+        throw new Error('User not authenticated. Please check your JWT token.');
+      }
+      
+      if (!request.user.userId) {
+        throw new Error('User ID not found in authentication token.');
+      }
+      
+      if (!request.user.tenantId) {
+        throw new Error('Tenant ID not found in authentication token.');
+      }
+
       const messageData: SendMessageData = {
         ...sendMessageDto,
         userId: request.user.userId,
         tenantId: request.user.tenantId,
       };
+
+      // Validate that the device exists and belongs to the user
+      const device = await this.whatsappService.findById(messageData.deviceId, messageData.userId, messageData.tenantId);
+      
+      console.log("device ",device)
+      if (!device) {
+        throw new Error(`Device with ID ${messageData.deviceId} not found or does not belong to the current user/tenant`);
+      }
 
       const result = await this.whatsappService.sendMessage(messageData);
       responseData.message = 'Message sent successfully';
@@ -477,8 +499,22 @@ export class WhatsAppController {
     }
 
     try {
+      if (!request.user) {
+        throw new Error('User not authenticated. Please check your JWT token.');
+      }
+      
+      if (!request.user.userId) {
+        throw new Error('User ID not found in authentication token.');
+      }
+      
+      if (!request.user.tenantId) {
+        throw new Error('Tenant ID not found in authentication token.');
+      }
+
       const messages = await this.whatsappMessageService.getDeviceMessages(
         deviceId,
+        request.user.userId,
+        request.user.tenantId,
         100 // limit
       );
       
@@ -702,17 +738,22 @@ export class WhatsAppController {
     }
 
     try {
-      const device = await this.whatsappService.findById(deviceId);
+      const device = await this.whatsappService.findById(deviceId, request.user.userId, request.user.tenantId);
       if (!device) {
         responseData.error = 1;
-        responseData.message = 'Device not found';
+        responseData.message = 'Device not found or does not belong to the current user/tenant';
         return response.status(HttpStatus.NOT_FOUND).json(responseData);
       }
 
       // Get connection status from Baileys service
-      let connectionStatus = { isConnected: false, lastSeen: null, connectionStatus: 'disconnected' };
+      let connectionStatus = { isConnected: false, lastSeen: null as Date | null, connectionStatus: 'disconnected' };
       try {
-        connectionStatus = await this.baileysService.getConnectionStatus(deviceId);
+        const baileysStatus = await this.baileysService.getConnectionStatus(deviceId);
+        connectionStatus = {
+          isConnected: baileysStatus.isConnected,
+          lastSeen: baileysStatus.deviceInfo?.lastConnectedAt || null,
+          connectionStatus: baileysStatus.isConnected ? 'connected' : 'disconnected'
+        };
       } catch (err) {
         // Connection status unavailable, use default
       }
@@ -723,9 +764,9 @@ export class WhatsAppController {
           id: device.id,
           deviceName: device.deviceName,
           phoneNumber: device.phoneNumber,
-          status: device.status,
+          isConnected: device.isConnected,
           isActive: device.isActive,
-          createdAt: device.createdAt
+          lastConnectedAt: device.lastConnectedAt
         },
         session: connectionStatus
       };
@@ -978,10 +1019,10 @@ export class WhatsAppController {
       confidentialErrorMessage: null
     }
     try {
-      const device = await this.whatsappService.findById(deviceId);
+      const device = await this.whatsappService.findById(deviceId, request.user.userId, request.user.tenantId);
       if(!device) {
         responseData.error = 1;
-        responseData.message = 'Device not found';
+        responseData.message = 'Device not found or does not belong to the current user/tenant';
         return response.status(HttpStatus.NOT_FOUND).json(responseData);
       }
       responseData.message = 'Device retrieved successfully';

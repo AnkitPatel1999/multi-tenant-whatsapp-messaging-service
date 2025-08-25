@@ -7,7 +7,6 @@ import { WhatsAppSession, WhatsAppSessionSchema } from '../schema/whatsapp-sessi
 import { WhatsAppContact, WhatsAppContactSchema } from '../schema/whatsapp-contact.schema';
 import { WhatsAppGroup, WhatsAppGroupSchema } from '../schema/whatsapp-group.schema';
 import { WhatsAppMessage, WhatsAppMessageSchema } from '../schema/whatsapp-message.schema';
-import { MessageLog, MessageLogSchema } from '../schema/message-log.schema';
 import { BaileysService } from './baileys.service';
 import { DatabaseAuthStateService } from './auth-state/database-auth-state.service';
 import { WhatsAppSyncService } from './sync/whatsapp-sync.service';
@@ -22,7 +21,6 @@ import { EncryptionModule } from '../common/encryption/encryption.module';
       { name: WhatsAppContact.name, schema: WhatsAppContactSchema },
       { name: WhatsAppGroup.name, schema: WhatsAppGroupSchema },
       { name: WhatsAppMessage.name, schema: WhatsAppMessageSchema },
-      { name: MessageLog.name, schema: MessageLogSchema },
     ]),
     EncryptionModule,
   ],

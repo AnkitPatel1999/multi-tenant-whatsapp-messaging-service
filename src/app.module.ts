@@ -17,9 +17,6 @@ import { TenantSchema } from './schema/tenant.schema';
 import { UserSchema } from './schema/user.schema';
 import { UserGroupSchema } from './schema/user-group.schema';
 import { WhatsAppDeviceSchema } from './schema/whatsapp-device.schema';
-import { MessageLogSchema } from './schema/message-log.schema';
-import { ContactSchema } from './schema/contact.schema';
-import { ChatGroupSchema } from './schema/chat-group.schema';
 import { WhatsAppSessionSchema } from './schema/whatsapp-session.schema';
 import { WhatsAppContactSchema } from './schema/whatsapp-contact.schema';
 import { WhatsAppGroupSchema } from './schema/whatsapp-group.schema';
@@ -53,9 +50,6 @@ import { AppThrottlerModule } from './common/throttler/throttler.module';
         { name: 'WhatsAppContact', schema: WhatsAppContactSchema },
         { name: 'WhatsAppGroup', schema: WhatsAppGroupSchema },
         { name: 'WhatsAppMessage', schema: WhatsAppMessageSchema },
-      { name: 'MessageLog', schema: MessageLogSchema },
-      { name: 'Contact', schema: ContactSchema },
-      { name: 'ChatGroup', schema: ChatGroupSchema },
     ]),
 
     // Scalability Infrastructure

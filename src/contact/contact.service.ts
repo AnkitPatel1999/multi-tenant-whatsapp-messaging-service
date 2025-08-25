@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { Contact, ContactDocument } from '../schema/contact.schema';
+import { WhatsAppContact, WhatsAppContactDocument } from '../schema/whatsapp-contact.schema';
 import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
@@ -9,17 +9,31 @@ export class ContactService {
   private readonly logger = new Logger(ContactService.name);
 
   constructor(
-    @InjectModel(Contact.name) private contactModel: Model<ContactDocument>,
+    @InjectModel(WhatsAppContact.name) private contactModel: Model<WhatsAppContactDocument>,
   ) { }
 
-  async getContacts(tenantId: string, userId?: string): Promise<ContactDocument[]> {
-    const filter: any = { tenantId, isActive: true };
-    if (userId) filter.userId = userId;
-
-    return await this.contactModel.find(filter).exec();
+  async getContacts(tenantId: string, userId?: string): Promise<WhatsAppContactDocument[]> {
+    try {
+      // Build filter based on available parameters
+      const filter: any = { isActive: true };
+      
+      if (tenantId) {
+        filter.tenantId = tenantId;
+      }
+      
+      if (userId) {
+        filter.userId = userId;
+      }
+      
+      const contacts = await this.contactModel.find(filter).exec();
+      return contacts;
+    } catch (error) {
+      this.logger.error('Error fetching WhatsApp contacts:', error.message);
+      return [];
+    }
   }
 
-  async createContact(contactData: Partial<Contact>): Promise<ContactDocument> {
+  async createContact(contactData: Partial<WhatsAppContact>): Promise<WhatsAppContactDocument> {
     console.log('createContact service called');
     const contact = new this.contactModel({
       contactId: uuidv4(),
@@ -31,14 +45,19 @@ export class ContactService {
 
   async getContactsForCache(deviceId: string, userId: string, tenantId: string): Promise<any[]> {
     // This method should return contacts in a format suitable for caching
-    // For now, return basic contact info
     const contacts = await this.getContacts(tenantId, userId);
     return contacts.map(contact => ({
       contactId: contact.contactId,
-      contactName: contact.contactName,
+      name: contact.name,
+      pushName: contact.pushName,
       phoneNumber: contact.phoneNumber,
-      email: contact.email,
+      whatsappId: contact.whatsappId,
       isActive: contact.isActive,
+      isBusiness: contact.isBusiness,
+      businessName: contact.businessName,
+      profilePicUrl: contact.profilePicUrl,
+      status: contact.status,
+      lastSeen: contact.lastSeen
     }));
   }
 

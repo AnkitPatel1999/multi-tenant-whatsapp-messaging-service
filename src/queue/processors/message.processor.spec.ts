@@ -129,11 +129,11 @@ describe('MessageProcessor', () => {
         deviceId: 'device123',
         userId: 'user123',
         tenantId: 'tenant123',
-        recipientPhoneNumber: '+1234567890',
-        messageContent: 'Test message',
+        toJid: '+1234567890',
+        textContent: 'Test message',
         messageType: 'text',
         status: 'sent',
-        baileysMessageId: 'msg123',
+        messageId: 'msg123',
         timestamp: expect.any(Date),
       });
 
@@ -166,11 +166,14 @@ describe('MessageProcessor', () => {
         deviceId: 'device123',
         userId: 'user123',
         tenantId: 'tenant123',
-        recipientPhoneNumber: '+1234567890',
-        messageContent: 'Test message',
+        toJid: '+1234567890',
+        textContent: 'Test message',
         messageType: 'text',
         status: 'failed',
-        errorMessage: 'Device device123 not found',
+        messageId: `FAILED_${Date.now()}`,
+        chatId: '+1234567890',
+        fromJid: 'device123',
+        direction: 'outgoing',
         timestamp: expect.any(Date),
       });
     });
@@ -195,11 +198,14 @@ describe('MessageProcessor', () => {
         deviceId: 'device123',
         userId: 'user123',
         tenantId: 'tenant123',
-        recipientPhoneNumber: '+1234567890',
-        messageContent: 'Test message',
+        toJid: '+1234567890',
+        textContent: 'Test message',
         messageType: 'text',
         status: 'failed',
-        errorMessage: 'Device device123 is not connected',
+        messageId: `FAILED_${Date.now()}`,
+        chatId: '+1234567890',
+        fromJid: 'device123',
+        direction: 'outgoing',
         timestamp: expect.any(Date),
       });
     });
@@ -464,7 +470,7 @@ describe('MessageProcessor', () => {
       // Assert
       expect(messageService.logMessage).toHaveBeenCalledWith(
         expect.objectContaining({
-          baileysMessageId: undefined,
+          messageId: expect.any(String),
         })
       );
 

@@ -72,11 +72,14 @@ export class MessageProcessor {
         deviceId: data.deviceId,
         userId: data.userId,
         tenantId: data.tenantId,
-        recipientPhoneNumber: data.to,
-        messageContent: data.message,
+        toJid: data.to,
+        textContent: data.message,
         messageType: data.type === 'document' || data.type === 'location' || data.type === 'contact' ? 'media' : data.type,
         status: 'sent',
-        baileysMessageId: result.messageId,
+        messageId: result.messageId,
+        chatId: data.to,
+        fromJid: data.deviceId,
+        direction: 'outgoing',
         timestamp: new Date(),
       });
 
@@ -116,11 +119,14 @@ export class MessageProcessor {
         deviceId: data.deviceId,
         userId: data.userId,
         tenantId: data.tenantId,
-        recipientPhoneNumber: data.to,
-        messageContent: data.message,
+        toJid: data.to,
+        textContent: data.message,
         messageType: data.type === 'document' || data.type === 'location' || data.type === 'contact' ? 'media' : data.type,
         status: 'failed',
-        errorMessage: error.message,
+        messageId: `FAILED_${Date.now()}`,
+        chatId: data.to,
+        fromJid: data.deviceId,
+        direction: 'outgoing',
         timestamp: new Date(),
       });
 
@@ -228,8 +234,8 @@ export class MessageProcessor {
           deviceId: failedMessage.deviceId,
           userId: failedMessage.userId,
           tenantId: failedMessage.tenantId,
-          to: failedMessage.recipientPhoneNumber,
-          message: failedMessage.messageContent,
+          to: failedMessage.toJid || failedMessage.chatId,
+          message: failedMessage.textContent,
           type: failedMessage.messageType,
         } as MessageJobData,
       } as unknown as Job<MessageJobData>);
@@ -238,7 +244,16 @@ export class MessageProcessor {
 
       // Update message status by logging a new entry
       await this.messageService.logMessage({
-        ...failedMessage,
+        deviceId: failedMessage.deviceId,
+        userId: failedMessage.userId,
+        tenantId: failedMessage.tenantId,
+        messageId: failedMessage.messageId,
+        chatId: failedMessage.chatId,
+        fromJid: failedMessage.fromJid,
+        toJid: failedMessage.toJid,
+        textContent: failedMessage.textContent,
+        messageType: failedMessage.messageType,
+        direction: failedMessage.direction,
         status: 'sent',
         timestamp: new Date(),
       });

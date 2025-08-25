@@ -2,12 +2,12 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ContactService } from './contact.service';
 import { ContactController } from './contact.controller';
-import { Contact, ContactSchema } from '../schema/contact.schema';
+import { WhatsAppContact, WhatsAppContactSchema } from '../schema/whatsapp-contact.schema';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
-      { name: Contact.name, schema: ContactSchema },
+      { name: WhatsAppContact.name, schema: WhatsAppContactSchema },
     ]),
   ],
   providers: [ContactService],

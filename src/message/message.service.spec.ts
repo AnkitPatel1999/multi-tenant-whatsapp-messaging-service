@@ -2,83 +2,86 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { MessageService } from './message.service';
-import { MessageLog, MessageLogDocument } from '../schema/message-log.schema';
-
-// Mock uuid
-jest.mock('uuid', () => ({
-  v4: jest.fn(() => 'msg-uuid-123')
-}));
+import { WhatsAppMessage, WhatsAppMessageDocument } from '../schema/whatsapp-message.schema';
 
 describe('MessageService', () => {
   let service: MessageService;
-  let messageLogModel: jest.Mocked<Model<MessageLogDocument>>;
+  let whatsappMessageModel: Model<WhatsAppMessageDocument>;
 
-  // Mock data
-  const mockMessageData = {
+  const mockWhatsAppMessage = {
+    messageId: 'MSG_123',
+    deviceId: 'device123',
     userId: 'user123',
     tenantId: 'tenant123',
-    groupId: 'group123',
-    deviceId: 'device123',
-    to: '+1234567890',
-    message: 'Test message',
-    type: 'text',
-    status: 'sent'
-  };
-
-  const mockMessageLog = {
-    messageId: 'msg-uuid-123',
-    timestamp: new Date('2024-01-01T00:00:00Z'),
-    ...mockMessageData,
-    save: jest.fn().mockResolvedValue({
-      messageId: 'msg-uuid-123',
-      timestamp: new Date('2024-01-01T00:00:00Z'),
-      ...mockMessageData
-    })
+    chatId: 'chat123',
+    fromJid: 'from123',
+    toJid: 'to123',
+    textContent: 'Test message',
+    messageType: 'text',
+    direction: 'incoming',
+    status: 'sent',
+    timestamp: new Date(),
+    isActive: true,
   };
 
   const mockSavedMessages = [
     {
-      messageId: 'msg1',
+      messageId: 'MSG_1',
+      deviceId: 'device123',
+      userId: 'user123',
+      tenantId: 'tenant123',
+      chatId: 'chat123',
+      fromJid: 'from123',
+      toJid: 'to123',
+      textContent: 'First message',
+      messageType: 'text',
+      direction: 'incoming',
+      status: 'sent',
       timestamp: new Date('2024-01-01T10:00:00Z'),
-      ...mockMessageData,
-      message: 'First message'
+      isActive: true,
     },
     {
-      messageId: 'msg2',
+      messageId: 'MSG_2',
+      deviceId: 'device123',
+      userId: 'user123',
+      tenantId: 'tenant123',
+      chatId: 'chat123',
+      fromJid: 'from123',
+      toJid: 'to123',
+      textContent: 'Second message',
+      messageType: 'text',
+      direction: 'incoming',
+      status: 'sent',
       timestamp: new Date('2024-01-01T09:00:00Z'),
-      ...mockMessageData,
-      message: 'Second message'
+      isActive: true,
     },
-    {
-      messageId: 'msg3',
-      timestamp: new Date('2024-01-01T08:00:00Z'),
-      ...mockMessageData,
-      message: 'Third message'
-    }
   ];
 
-  beforeEach(async () => {
-    // Create a constructor function that acts as a Mongoose model
-    const mockMessageLogModel = jest.fn().mockImplementation((data) => ({
+  const mockWhatsAppMessageModel = {
+    find: jest.fn(),
+    findOne: jest.fn(),
+    findOneAndUpdate: jest.fn(),
+    deleteMany: jest.fn(),
+    new: jest.fn().mockImplementation((data) => ({
+      ...mockWhatsAppMessage,
       ...data,
-      save: jest.fn().mockResolvedValue(data)
-    }));
-    
-    // Add static methods to the constructor function
-    mockMessageLogModel.find = jest.fn();
-    mockMessageLogModel.findOne = jest.fn();
-    mockMessageLogModel.findOneAndUpdate = jest.fn();
-    mockMessageLogModel.deleteMany = jest.fn();
+      save: jest.fn().mockResolvedValue({
+        ...mockWhatsAppMessage,
+        ...data,
+      }),
+    })),
+  };
 
+  beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MessageService,
-        { provide: getModelToken(MessageLog.name), useValue: mockMessageLogModel },
+        { provide: getModelToken(WhatsAppMessage.name), useValue: mockWhatsAppMessageModel },
       ],
     }).compile();
 
     service = module.get<MessageService>(MessageService);
-    messageLogModel = module.get(getModelToken(MessageLog.name));
+    whatsappMessageModel = module.get(getModelToken(WhatsAppMessage.name));
   });
 
   afterEach(() => {
@@ -89,7 +92,7 @@ describe('MessageService', () => {
     it('should return messages for a tenant with default limit', async () => {
       // Arrange
       const tenantId = 'tenant123';
-      messageLogModel.find.mockReturnValue({
+      whatsappMessageModel.find.mockReturnValue({
         sort: jest.fn().mockReturnValue({
           limit: jest.fn().mockReturnValue({
             exec: jest.fn().mockResolvedValue(mockSavedMessages)
@@ -101,7 +104,7 @@ describe('MessageService', () => {
       const result = await service.getMessages(tenantId);
 
       // Assert
-      expect(messageLogModel.find).toHaveBeenCalledWith({ tenantId });
+      expect(whatsappMessageModel.find).toHaveBeenCalledWith({ tenantId });
       expect(result).toEqual(mockSavedMessages);
     });
 
@@ -109,7 +112,7 @@ describe('MessageService', () => {
       // Arrange
       const tenantId = 'tenant123';
       const userId = 'user123';
-      messageLogModel.find.mockReturnValue({
+      whatsappMessageModel.find.mockReturnValue({
         sort: jest.fn().mockReturnValue({
           limit: jest.fn().mockReturnValue({
             exec: jest.fn().mockResolvedValue(mockSavedMessages)
@@ -121,7 +124,7 @@ describe('MessageService', () => {
       const result = await service.getMessages(tenantId, userId);
 
       // Assert
-      expect(messageLogModel.find).toHaveBeenCalledWith({ tenantId, userId });
+      expect(whatsappMessageModel.find).toHaveBeenCalledWith({ tenantId, userId });
       expect(result).toEqual(mockSavedMessages);
     });
 
@@ -130,7 +133,7 @@ describe('MessageService', () => {
       const tenantId = 'tenant123';
       const userId = 'user123';
       const groupId = 'group123';
-      messageLogModel.find.mockReturnValue({
+      whatsappMessageModel.find.mockReturnValue({
         sort: jest.fn().mockReturnValue({
           limit: jest.fn().mockReturnValue({
             exec: jest.fn().mockResolvedValue(mockSavedMessages)
@@ -142,7 +145,7 @@ describe('MessageService', () => {
       const result = await service.getMessages(tenantId, userId, groupId);
 
       // Assert
-      expect(messageLogModel.find).toHaveBeenCalledWith({ tenantId, userId, groupId });
+      expect(whatsappMessageModel.find).toHaveBeenCalledWith({ tenantId, userId, groupId });
       expect(result).toEqual(mockSavedMessages);
     });
 
@@ -156,7 +159,7 @@ describe('MessageService', () => {
       const mockSort = jest.fn().mockReturnValue({
         limit: mockLimit
       });
-      messageLogModel.find.mockReturnValue({
+      whatsappMessageModel.find.mockReturnValue({
         sort: mockSort
       });
 
@@ -164,7 +167,7 @@ describe('MessageService', () => {
       const result = await service.getMessages(tenantId, undefined, undefined, customLimit);
 
       // Assert
-      expect(messageLogModel.find).toHaveBeenCalledWith({ tenantId });
+      expect(whatsappMessageModel.find).toHaveBeenCalledWith({ tenantId });
       expect(mockSort).toHaveBeenCalledWith({ timestamp: -1 });
       expect(mockLimit).toHaveBeenCalledWith(customLimit);
       expect(result).toEqual(mockSavedMessages);
@@ -178,7 +181,7 @@ describe('MessageService', () => {
           exec: jest.fn().mockResolvedValue(mockSavedMessages)
         })
       });
-      messageLogModel.find.mockReturnValue({ sort: sortMock } as any);
+      whatsappMessageModel.find.mockReturnValue({ sort: sortMock } as any);
 
       // Act
       await service.getMessages(tenantId);
@@ -191,7 +194,7 @@ describe('MessageService', () => {
       // Arrange
       const tenantId = 'tenant123';
       const error = new Error('Database connection failed');
-      messageLogModel.find.mockReturnValue({
+      whatsappMessageModel.find.mockReturnValue({
         sort: jest.fn().mockReturnValue({
           limit: jest.fn().mockReturnValue({
             exec: jest.fn().mockRejectedValue(error)
@@ -216,21 +219,21 @@ describe('MessageService', () => {
 
     it('should log a message with generated messageId and timestamp', async () => {
       // Arrange
-      const messageData = { ...mockMessageData };
-      messageLogModel.mockImplementation(() => mockMessageLog);
+      const messageData = { ...mockWhatsAppMessage };
+      whatsappMessageModel.new.mockReturnValue(mockWhatsAppMessage);
 
       // Act
       const result = await service.logMessage(messageData);
 
       // Assert
-      expect(messageLogModel).toHaveBeenCalledWith({
-        messageId: 'msg-uuid-123',
+      expect(whatsappMessageModel.new).toHaveBeenCalledWith({
+        messageId: 'MSG_123',
         timestamp: expect.any(Date),
         ...messageData,
       });
-      expect(mockMessageLog.save).toHaveBeenCalled();
+      expect(mockWhatsAppMessage.save).toHaveBeenCalled();
       expect(result).toEqual(expect.objectContaining({
-        messageId: 'msg-uuid-123',
+        messageId: 'MSG_123',
         ...messageData
       }));
     });
@@ -241,7 +244,7 @@ describe('MessageService', () => {
         tenantId: 'tenant123',
         message: 'Partial message'
       };
-      messageLogModel.mockImplementation((data) => ({
+      whatsappMessageModel.new.mockImplementation((data) => ({
         ...data,
         save: jest.fn().mockResolvedValue(data)
       }));
@@ -250,22 +253,22 @@ describe('MessageService', () => {
       const result = await service.logMessage(partialData);
 
       // Assert
-      expect(messageLogModel).toHaveBeenCalledWith({
-        messageId: 'msg-uuid-123',
+      expect(whatsappMessageModel.new).toHaveBeenCalledWith({
+        messageId: 'MSG_123',
         timestamp: expect.any(Date),
         ...partialData,
       });
       expect(result).toEqual(expect.objectContaining({
-        messageId: 'msg-uuid-123',
+        messageId: 'MSG_123',
         ...partialData
       }));
     });
 
     it('should handle save error', async () => {
       // Arrange
-      const messageData = { ...mockMessageData };
+      const messageData = { ...mockWhatsAppMessage };
       const error = new Error('Save failed');
-      messageLogModel.mockImplementation(() => ({
+      whatsappMessageModel.new.mockImplementation(() => ({
         save: jest.fn().mockRejectedValue(error)
       }));
 
@@ -277,9 +280,9 @@ describe('MessageService', () => {
   describe('findById', () => {
     it('should find message by messageId', async () => {
       // Arrange
-      const messageId = 'msg-uuid-123';
+      const messageId = 'MSG_123';
       const expectedMessage = mockSavedMessages[0];
-      messageLogModel.findOne.mockReturnValue({
+      whatsappMessageModel.findOne.mockReturnValue({
         exec: jest.fn().mockResolvedValue(expectedMessage)
       } as any);
 
@@ -287,14 +290,14 @@ describe('MessageService', () => {
       const result = await service.findById(messageId);
 
       // Assert
-      expect(messageLogModel.findOne).toHaveBeenCalledWith({ messageId });
+      expect(whatsappMessageModel.findOne).toHaveBeenCalledWith({ messageId });
       expect(result).toEqual(expectedMessage);
     });
 
     it('should return null when message not found', async () => {
       // Arrange
       const messageId = 'non-existent-id';
-      messageLogModel.findOne.mockReturnValue({
+      whatsappMessageModel.findOne.mockReturnValue({
         exec: jest.fn().mockResolvedValue(null)
       } as any);
 
@@ -302,15 +305,15 @@ describe('MessageService', () => {
       const result = await service.findById(messageId);
 
       // Assert
-      expect(messageLogModel.findOne).toHaveBeenCalledWith({ messageId });
+      expect(whatsappMessageModel.findOne).toHaveBeenCalledWith({ messageId });
       expect(result).toBeNull();
     });
 
     it('should handle database query error', async () => {
       // Arrange
-      const messageId = 'msg-uuid-123';
+      const messageId = 'MSG_123';
       const error = new Error('Query failed');
-      messageLogModel.findOne.mockReturnValue({
+      whatsappMessageModel.findOne.mockReturnValue({
         exec: jest.fn().mockRejectedValue(error)
       } as any);
 
@@ -322,11 +325,11 @@ describe('MessageService', () => {
   describe('updateMessageStatus', () => {
     it('should update message status and return updated document', async () => {
       // Arrange
-      const messageId = 'msg-uuid-123';
+      const messageId = 'MSG_123';
       const newStatus = 'delivered';
       const updatedMessage = { ...mockSavedMessages[0], status: newStatus };
       
-      messageLogModel.findOneAndUpdate.mockReturnValue({
+      whatsappMessageModel.findOneAndUpdate.mockReturnValue({
         exec: jest.fn().mockResolvedValue(updatedMessage)
       } as any);
 
@@ -334,7 +337,7 @@ describe('MessageService', () => {
       const result = await service.updateMessageStatus(messageId, newStatus);
 
       // Assert
-      expect(messageLogModel.findOneAndUpdate).toHaveBeenCalledWith(
+      expect(whatsappMessageModel.findOneAndUpdate).toHaveBeenCalledWith(
         { messageId },
         { status: newStatus },
         { new: true }
@@ -347,7 +350,7 @@ describe('MessageService', () => {
       const messageId = 'non-existent-id';
       const newStatus = 'delivered';
       
-      messageLogModel.findOneAndUpdate.mockReturnValue({
+      whatsappMessageModel.findOneAndUpdate.mockReturnValue({
         exec: jest.fn().mockResolvedValue(null)
       } as any);
 
@@ -355,7 +358,7 @@ describe('MessageService', () => {
       const result = await service.updateMessageStatus(messageId, newStatus);
 
       // Assert
-      expect(messageLogModel.findOneAndUpdate).toHaveBeenCalledWith(
+      expect(whatsappMessageModel.findOneAndUpdate).toHaveBeenCalledWith(
         { messageId },
         { status: newStatus },
         { new: true }
@@ -365,11 +368,11 @@ describe('MessageService', () => {
 
     it('should handle update error', async () => {
       // Arrange
-      const messageId = 'msg-uuid-123';
+      const messageId = 'MSG_123';
       const newStatus = 'delivered';
       const error = new Error('Update failed');
       
-      messageLogModel.findOneAndUpdate.mockReturnValue({
+      whatsappMessageModel.findOneAndUpdate.mockReturnValue({
         exec: jest.fn().mockRejectedValue(error)
       } as any);
 
@@ -384,7 +387,7 @@ describe('MessageService', () => {
       const cutoffDate = new Date('2024-01-01T00:00:00Z');
       const mockResult = { deletedCount: 5 };
       
-      messageLogModel.deleteMany.mockReturnValue({
+      whatsappMessageModel.deleteMany.mockReturnValue({
         exec: jest.fn().mockResolvedValue(mockResult)
       } as any);
 
@@ -392,7 +395,7 @@ describe('MessageService', () => {
       const result = await service.deleteOldMessages(cutoffDate);
 
       // Assert
-      expect(messageLogModel.deleteMany).toHaveBeenCalledWith({
+      expect(whatsappMessageModel.deleteMany).toHaveBeenCalledWith({
         timestamp: { $lt: cutoffDate }
       });
       expect(result).toBe(5);
@@ -403,7 +406,7 @@ describe('MessageService', () => {
       const cutoffDate = new Date('2024-01-01T00:00:00Z');
       const mockResult = { deletedCount: 0 };
       
-      messageLogModel.deleteMany.mockReturnValue({
+      whatsappMessageModel.deleteMany.mockReturnValue({
         exec: jest.fn().mockResolvedValue(mockResult)
       } as any);
 
@@ -419,7 +422,7 @@ describe('MessageService', () => {
       const cutoffDate = new Date('2024-01-01T00:00:00Z');
       const mockResult = {}; // No deletedCount property
       
-      messageLogModel.deleteMany.mockReturnValue({
+      whatsappMessageModel.deleteMany.mockReturnValue({
         exec: jest.fn().mockResolvedValue(mockResult)
       } as any);
 
@@ -435,7 +438,7 @@ describe('MessageService', () => {
       const cutoffDate = new Date('2024-01-01T00:00:00Z');
       const error = new Error('Delete operation failed');
       
-      messageLogModel.deleteMany.mockReturnValue({
+      whatsappMessageModel.deleteMany.mockReturnValue({
         exec: jest.fn().mockRejectedValue(error)
       } as any);
 
@@ -448,7 +451,7 @@ describe('MessageService', () => {
       const cutoffDate = new Date('2023-12-31T23:59:59Z');
       const mockResult = { deletedCount: 3 };
       
-      messageLogModel.deleteMany.mockReturnValue({
+      whatsappMessageModel.deleteMany.mockReturnValue({
         exec: jest.fn().mockResolvedValue(mockResult)
       } as any);
 
@@ -456,7 +459,7 @@ describe('MessageService', () => {
       await service.deleteOldMessages(cutoffDate);
 
       // Assert
-      expect(messageLogModel.deleteMany).toHaveBeenCalledWith({
+      expect(whatsappMessageModel.deleteMany).toHaveBeenCalledWith({
         timestamp: { $lt: cutoffDate }
       });
     });

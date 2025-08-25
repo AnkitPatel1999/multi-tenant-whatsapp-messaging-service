@@ -246,7 +246,16 @@ export class BaileysService {
           await this.handleConnectionClose(deviceId, userId, tenantId, lastDisconnect);
         } else if (connection === 'open') {
           this.logger.log(`Connection opened successfully for device ${deviceId}`);
-          await this.updateConnectionStatus(deviceId, true);
+          
+          // Only mark as connected if we have valid WhatsApp credentials
+          if (sock.user && sock.user.id) {
+            await this.updateConnectionStatus(deviceId, true);
+            this.logger.log(`Device ${deviceId} successfully authenticated with WhatsApp`);
+          } else {
+            this.logger.warn(`Device ${deviceId} connection opened but no valid credentials yet`);
+            await this.updateConnectionStatus(deviceId, false);
+          }
+          
           // Reset retry counter on successful connection
           this.retryInfo.delete(deviceId);
           // Save auth state after successful connection
@@ -364,9 +373,23 @@ export class BaileysService {
 
 
 
-      // Store connection
+      // Store connection (but don't mark as connected yet - wait for successful authentication)
       this.connections.set(deviceId, sock);
       this.authStates.set(deviceId, authState);
+      
+      // Ensure device is marked as disconnected initially (QR code mode)
+      try {
+        await this.deviceModel.updateOne(
+          { deviceId },
+          { 
+            isConnected: false,
+            updatedAt: new Date()
+          }
+        );
+        this.logger.log(`Device ${deviceId} marked as disconnected during QR code generation`);
+      } catch (updateError) {
+        this.logger.warn(`Failed to update device ${deviceId} status during QR generation:`, updateError.message);
+      }
 
       return { success: true, deviceId };
     } catch (error) {
@@ -432,8 +455,22 @@ export class BaileysService {
     // Update device status to disconnected
     await this.updateConnectionStatus(deviceId, false);
     
-    // Clean up connection
-    this.connections.delete(deviceId);
+          // Clean up connection
+      this.connections.delete(deviceId);
+      
+      // Ensure device is marked as disconnected in database
+      try {
+        await this.deviceModel.updateOne(
+          { deviceId },
+          { 
+            isConnected: false,
+            updatedAt: new Date()
+          }
+        );
+        this.logger.log(`Device ${deviceId} marked as disconnected in database`);
+      } catch (updateError) {
+        this.logger.warn(`Failed to update device ${deviceId} status in database:`, updateError.message);
+      }
     
     let shouldReconnect = false;
     let reconnectDelay = 1000; // Default 1 second
@@ -618,27 +655,50 @@ export class BaileysService {
         throw new Error('Failed to send message - no response from WhatsApp');
       }
       
-      const messageId = result.key?.id;
+      // Handle different response structures from WhatsApp
+      let messageId: string | undefined;
+      if (result.key && result.key.id) {
+        messageId = result.key.id;
+      } else if (result.id) {
+        messageId = result.id;
+      } else if (result.messageId) {
+        messageId = result.messageId;
+      } else {
+        // Generate a fallback message ID if none is provided
+        messageId = `MSG_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        this.logger.warn(`No message ID returned from WhatsApp, generated fallback ID: ${messageId}`);
+      }
+      
       this.logger.log(`Message sent successfully. MessageId: ${messageId}`);
       
       // Store the outgoing message in database
       if (messageId) {
-        // Get device info for user/tenant context
-        const device = await this.deviceModel.findOne({ deviceId }).exec();
-        if (device) {
-          await this.storeOutgoingMessage(
-            deviceId,
-            device.userId,
-            device.tenantId,
-            formattedTo,
-            messageData,
-            messageId
-          );
+        try {
+          // Get device info for user/tenant context
+          const device = await this.deviceModel.findOne({ deviceId }).exec();
+          if (device) {
+            await this.storeOutgoingMessage(
+              deviceId,
+              device.userId,
+              device.tenantId,
+              formattedTo,
+              messageData,
+              messageId
+            );
+          }
+        } catch (storeError) {
+          this.logger.warn(`Failed to store outgoing message in database: ${storeError.message}`);
+          // Don't fail the send operation if storage fails
         }
       }
 
       // Log message success
-      await this.logMessage(deviceId, formattedTo, message, type, 'sent');
+      try {
+        await this.logMessage(deviceId, formattedTo, message, type, 'sent');
+      } catch (logError) {
+        this.logger.warn(`Failed to log successful message: ${logError.message}`);
+        // Don't fail the send operation if logging fails
+      }
       
       return {
         success: true,
@@ -709,11 +769,23 @@ export class BaileysService {
       const connection = this.connections.get(deviceId);
       const device = await this.deviceModel.findOne({ deviceId }).exec();
       
-      // Determine actual connection status
-      const actualConnectionStatus = !!connection;
+      // Determine actual connection status - only true if we have a valid WhatsApp connection
+      let actualConnectionStatus = false;
       
-      // Check if database status needs to be synced
-      if (device && device.isConnected !== actualConnectionStatus) {
+      if (connection) {
+        // Check if the connection has valid WhatsApp credentials
+        // A connection with just a QR code should not be considered "connected"
+        const hasValidCredentials = connection.user && connection.user.id;
+        actualConnectionStatus = hasValidCredentials;
+        
+        // If we have a connection but no valid credentials, we're in QR code mode
+        if (!hasValidCredentials) {
+          this.logger.debug(`Device ${deviceId} has connection object but no valid credentials (QR mode)`);
+        }
+      }
+      
+      // Only auto-sync if the device is actually connected to WhatsApp (not just QR mode)
+      if (device && device.isConnected !== actualConnectionStatus && actualConnectionStatus) {
         try {
           // Update database to match actual connection status
           await this.deviceModel.updateOne(
