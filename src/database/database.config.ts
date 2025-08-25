@@ -2,9 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import { MongooseModuleOptions } from '@nestjs/mongoose';
 
 export const getDatabaseConfig = (configService: ConfigService): MongooseModuleOptions => {
-  const mongoUri = configService.get<string>('database.url') || 
-                   configService.get<string>('MONGODB_URI') || 
-                   'mongodb://localhost:27017/whatsapp-system2';
+  const mongoUri = configService.get<string>('database.url');
   
   if (!mongoUri) {
     throw new Error('No database URI configured. Please set MONGODB_URI or database.url');

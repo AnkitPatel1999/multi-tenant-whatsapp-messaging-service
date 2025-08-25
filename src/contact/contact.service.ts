@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { WhatsAppContact, WhatsAppContactDocument } from '../schema/whatsapp-contact.schema';
-import { v4 as uuidv4 } from 'uuid';
+
 
 @Injectable()
 export class ContactService {
@@ -33,15 +33,7 @@ export class ContactService {
     }
   }
 
-  async createContact(contactData: Partial<WhatsAppContact>): Promise<WhatsAppContactDocument> {
-    console.log('createContact service called');
-    const contact = new this.contactModel({
-      contactId: uuidv4(),
-      ...contactData,
-    });
 
-    return await contact.save();
-  }
 
   async getContactsForCache(deviceId: string, userId: string, tenantId: string): Promise<any[]> {
     // This method should return contacts in a format suitable for caching
