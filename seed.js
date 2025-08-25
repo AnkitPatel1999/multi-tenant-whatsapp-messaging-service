@@ -58,10 +58,11 @@ async function seed() {
     
     // Create admin user
     const hashedPassword = await bcrypt.hash('admin123', 10);
+    const adminUsername = 'admin';
     const adminUser = await db.collection('users').insertOne({
       userId: uuidv4(),
       tenantId,
-      username: 'admin@example.com',
+      username: adminUsername,
       password: hashedPassword,
       groupId,
       email: 'admin@example.com',
@@ -72,11 +73,11 @@ async function seed() {
       createdAt: new Date(),
       updatedAt: new Date()
     });
-    console.log('✅ Admin user created: admin@example.com');
+    console.log(`✅ Admin user created: ${adminUsername}`);
     
     console.log('\n🎉 Seed completed successfully!');
-    console.log('📧 Login credentials:');
-    console.log('   Username: admin@example.com');
+    console.log('🔐 Login credentials:');
+    console.log(`   Username: ${adminUsername}`);
     console.log('   Password: admin123');
     console.log('   Tenant ID:', tenantId);
     console.log('   Group ID:', groupId);
