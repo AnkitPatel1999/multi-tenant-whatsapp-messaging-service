@@ -13,7 +13,7 @@ export class AuthController {
   @Post('login')
   @ApiOperation({
     summary: 'User authentication',
-    description: 'Authenticate user with email and password to receive JWT access token'
+    description: 'Authenticate user with username and password to receive JWT access token'
   })
   @ApiBody({
     type: LoginDto,
@@ -22,14 +22,14 @@ export class AuthController {
       admin: {
         summary: 'Admin login example',
         value: {
-          email: 'admin@example.com',
+          username: 'admin.user',
           password: 'SecurePassword123!'
         }
       },
       user: {
         summary: 'Regular user login',
         value: {
-          email: 'user@example.com',
+          username: 'john.smith',
           password: 'UserPassword456!'
         }
       }
@@ -53,7 +53,7 @@ export class AuthController {
               type: 'object',
               properties: {
                 id: { type: 'string', example: '507f1f77bcf86cd799439011' },
-                email: { type: 'string', example: 'user@example.com' },
+                username: { type: 'string', example: 'john.smith' },
                 role: { type: 'string', example: 'admin' },
                 tenantId: { type: 'string', example: '507f1f77bcf86cd799439012' }
               }
@@ -73,7 +73,7 @@ export class AuthController {
         message: { type: 'string', example: 'Error: Login failed!' },
         data: { type: 'object', example: {} },
         error: { type: 'number', example: 1 },
-        confidentialErrorMessage: { type: 'string', example: 'Invalid email or password' }
+        confidentialErrorMessage: { type: 'string', example: 'Invalid username or password' }
       }
     }
   })
@@ -86,7 +86,7 @@ export class AuthController {
         message: { type: 'string', example: 'Error: Login failed!' },
         data: { type: 'object', example: {} },
         error: { type: 'number', example: 1 },
-        confidentialErrorMessage: { type: 'string', example: 'Email and password are required' }
+        confidentialErrorMessage: { type: 'string', example: 'Username and password are required' }
       }
     }
   })
